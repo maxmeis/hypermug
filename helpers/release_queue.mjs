@@ -59,7 +59,7 @@ export async function semanticPlan(repo, selection) {
     const checkout = join(temp, 'checkout');
     const remote = join(temp, 'origin.git');
     git(repo, 'clone', '-q', '--no-local', repo, checkout);
-    git(repo, 'init', '--bare', '-q', remote);
+    git(repo, 'init', '--bare', '-q', '--initial-branch=main', remote);
     // A refreshed origin/main can point past this runner's checkout. A clone
     // copies local branches, not our remote-tracking refs; fetch this source
     // explicitly so out-of-order workflow events can still drain the backlog.

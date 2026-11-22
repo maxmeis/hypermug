@@ -178,6 +178,26 @@ test('semantic dry run ignores the outer GitHub pull-request ref', (t) => {
   assert.match(readFileSync(join(repo, 'notes.md'), 'utf8'), /repair PR release selection/);
 });
 
+test('semantic dry run works when Git defaults new bare repos to master', (t) => {
+  const { repo, cleanup } = fixture();
+  t.after(cleanup);
+  commit(repo, 'docs: explain release queue');
+  const env = {
+    ...process.env,
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'init.defaultBranch',
+    GIT_CONFIG_VALUE_0: 'master',
+  };
+  const result = spawnSync(process.execPath,
+    [new URL('./release_queue.mjs', import.meta.url).pathname, 'next', '--repo', repo,
+      '--main', 'main', '--notes-file', join(repo, 'notes.md')],
+    { encoding: 'utf8', env });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Next release: v0\.3\.4/);
+});
+
 test('queue can release refreshed main beyond the runner checkout', async (t) => {
   const { repo, cleanup } = fixture();
   t.after(cleanup);
