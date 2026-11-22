@@ -177,7 +177,7 @@ private func anyKeyTests() {
 
 private func decodeDefaultsTests() {
     expectConfig("{}", AppConfig())
-    expectEqual(AppConfig(), AppConfig(capsLock: .meh, caffeineOnLaunch: true, launchAtLogin: false, autoUpdate: true, mouse: MouseConfig()),
+    expectEqual(AppConfig(), AppConfig(capsLock: .threeMod, caffeineOnLaunch: true, launchAtLogin: false, autoUpdate: true, mouse: MouseConfig()),
                 "documented defaults")
     expectConfig("{\"autoUpdate\":true}", AppConfig(autoUpdate: true))
     expectConfig("{\"autoUpdate\":false}", AppConfig(autoUpdate: false))
@@ -189,6 +189,7 @@ private func decodeDefaultsTests() {
     expectConfig("{\"capsLock\":\"default\"}", AppConfig(capsLock: .default))
     expectConfig("{\"capsLock\":\"hyper\"}", AppConfig(capsLock: .hyper))
     expectConfig("{\"capsLock\":\"meh\"}", AppConfig(capsLock: .meh))
+    expectConfig("{\"capsLock\":\"threeMod\"}", AppConfig(capsLock: .threeMod))
     expectConfig("{\"mouse\":{\"invertScroll\":{\"vertical\":true}}}",
                  AppConfig(mouse: MouseConfig(invertScroll: InvertScroll(vertical: true))))
     expectConfig("{\"mouse\":{\"invertScroll\":{\"horizontal\":true}}}",
@@ -205,9 +206,9 @@ private func decodeDefaultsTests() {
            "empty and whitespace-only data is blank")
     expect(!isBlankConfigData(Data("{}".utf8)), "{} is not blank")
 
-    expect(!CapsMode.default.isModifier && CapsMode.meh.isModifier && CapsMode.hyper.isModifier,
-           "only meh and hyper are modifier modes")
-    expectEqual(CapsMode.allCases.map { $0.rawValue }, ["default", "meh", "hyper"], "capsLock vocabulary")
+    expect(!CapsMode.default.isModifier && CapsMode.meh.isModifier && CapsMode.threeMod.isModifier && CapsMode.hyper.isModifier,
+           "all non-default modes are modifiers")
+    expectEqual(CapsMode.allCases.map { $0.rawValue }, ["default", "meh", "threeMod", "hyper"], "capsLock vocabulary")
 }
 
 private func decodeActionTests() {
@@ -273,7 +274,7 @@ private func decodeActionTests() {
 }
 
 private func decodeRejectionTests() {
-    expectRejected("{\"capsLock\":\"upper\"}", "capsLock must be \"default\", \"meh\" or \"hyper\" (got \"upper\")")
+    expectRejected("{\"capsLock\":\"upper\"}", "capsLock must be \"default\", \"meh\", \"threeMod\" or \"hyper\" (got \"upper\")")
     expectRejected("{\"capsLock\":5}", "capsLock: expected a string")
     expectRejected("{\"caffeineOnLaunch\":\"yes\"}", "caffeineOnLaunch: expected true or false")
     expectRejected("{\"launchAtLogin\":1}", "launchAtLogin: expected true or false")
@@ -343,7 +344,7 @@ private func encodeTests() {
     {
       "autoUpdate" : true,
       "caffeineOnLaunch" : true,
-      "capsLock" : "meh",
+      "capsLock" : "threeMod",
       "launchAtLogin" : false,
       "mouse" : {
         "invertScroll" : {
@@ -360,7 +361,7 @@ private func encodeTests() {
     let prev = "/opt/homebrew/bin/aerospace workspace --no-stdin --wrap-around prev"
     let expectedNewFile: [String: Any] = [
         "shellTimeoutSeconds": 10,
-        "autoUpdate": true, "caffeineOnLaunch": true, "capsLock": "meh", "launchAtLogin": true,
+        "autoUpdate": true, "caffeineOnLaunch": true, "capsLock": "threeMod", "launchAtLogin": true,
         "mouse": ["invertScroll": ["horizontal": false, "vertical": false],
                   "buttons": ["back": ["shell": next], "forward": ["shell": prev]]],
         "trackpad": ["threeFingerSwipe": ["left": ["shell": next], "right": ["shell": prev]],

@@ -9,7 +9,8 @@ private let scrollBit: CGEventMask = 1 << CGEventType.scrollWheel.rawValue
 
 private let back = ButtonAction.shell("back-cmd")
 private let forward = ButtonAction.shell("forward-cmd")
-private let meh: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
+private let meh: CGEventFlags = [.maskControl, .maskAlternate, .maskShift]
+private let threeMod: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
 private let hyper: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand, .maskShift]
 
 private func settings(caps: CapsMode = .default, back: ButtonAction? = nil, forward: ButtonAction? = nil,
@@ -117,11 +118,15 @@ private func settingsMaskTests() {
 private func capsFlagsTests() {
     expectEqual(capsModifierFlags(for: .default), [])
     expectEqual(capsModifierFlags(for: .meh), meh)
+    expectEqual(capsModifierFlags(for: .threeMod), threeMod)
     expectEqual(capsModifierFlags(for: .hyper), hyper)
 
     expectEqual(flagsWhileCapsHeld([], mode: .meh), meh)
+    expectEqual(flagsWhileCapsHeld([], mode: .threeMod), threeMod)
     expectEqual(flagsWhileCapsHeld([], mode: .hyper), hyper)
     expectEqual(flagsWhileCapsHeld(.maskShift, mode: .meh), meh.union(.maskShift))
+    expectEqual(flagsWhileCapsHeld(.maskShift, mode: .threeMod), threeMod.union(.maskShift))
+    expectEqual(flagsWhileCapsHeld(.maskCommand, mode: .meh), meh.union(.maskCommand))
     expectEqual(flagsWhileCapsHeld(.maskShift, mode: .hyper), hyper)
     expectEqual(flagsWhileCapsHeld([.maskSecondaryFn, .maskShift], mode: .meh), meh.union([.maskSecondaryFn, .maskShift]))
     expectEqual(flagsWhileCapsHeld([.maskShift, .maskCommand], mode: .default), [.maskShift, .maskCommand])
@@ -281,14 +286,14 @@ private func scrollEventTests() {
 private func capsKeyEventTests() {
     var state = TapState()
 
-    // The Caps Lock toggle event never reaches apps in Meh/Hyper mode; other keycodes and default mode pass.
+    // The Caps Lock toggle event never reaches apps in a modifier mode; other keycodes and default mode pass.
     let toggle = TapEvent(type: .flagsChanged, keyCode: 57)
     expectEqual(state.handle(toggle, settings: settings(caps: .meh)).0, TapDecision(pass: false))
     expectEqual(state.handle(toggle, settings: settings(caps: .hyper)).0, TapDecision(pass: false))
     expectEqual(state.handle(toggle, settings: settings(caps: .default)).0, TapDecision())
     expectEqual(state.handle(TapEvent(type: .flagsChanged, keyCode: 56), settings: settings(caps: .meh)).0, TapDecision())
 
-    for mode in [CapsMode.meh, .hyper] {
+    for mode in [CapsMode.meh, .threeMod, .hyper] {
         var clean = TapState()
         let capsToggle = TapEvent(type: .flagsChanged, keyCode: 57, flags: [.maskAlphaShift, .maskShift])
         let toggled = clean.handle(capsToggle, settings: settings(caps: mode))
@@ -315,9 +320,10 @@ private func capsKeyEventTests() {
     let key = TapEvent(type: .keyDown, keyCode: 40, flags: .maskShift)
     expectNoop(state.handle(key, settings: settings(caps: .meh)))
 
-    // Held: both key phases get Meh/Hyper added, physical modifiers are kept.
+    // Held: both key phases get the mode flags; physical modifiers are kept.
     _ = state.capsKey(down: true, nowNanos: 0)
     expectEqual(state.handle(key, settings: settings(caps: .meh)).0, TapDecision(flags: meh.union(.maskShift)))
+    expectEqual(state.handle(key, settings: settings(caps: .threeMod)).0, TapDecision(flags: threeMod.union(.maskShift)))
     expectEqual(state.handle(TapEvent(type: .keyUp, keyCode: 40), settings: settings(caps: .hyper)).0, TapDecision(flags: hyper))
     // Default mode ignores a held Caps state.
     expectEqual(state.handle(key, settings: settings(caps: .default)).0, TapDecision())

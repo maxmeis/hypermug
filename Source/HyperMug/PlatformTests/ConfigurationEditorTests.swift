@@ -30,7 +30,7 @@ struct ConfigurationEditorChecks {
         check(try Data(contentsOf: url) == initial, "invalid Save cannot overwrite the running configuration")
         model.edit(#"capsLock = "hyper""#)
         model.validate()
-        check(!model.messageIsError && store.config.capsLock == .meh, "Validate does not apply settings")
+        check(!model.messageIsError && store.config.capsLock == .threeMod, "Validate does not apply settings")
         check(model.message?.contains("Valid TOML") == true, "Validate names the document format")
         model.save()
         check(!model.draft.isModified && store.config.capsLock == .hyper, "Save applies through ConfigStore")

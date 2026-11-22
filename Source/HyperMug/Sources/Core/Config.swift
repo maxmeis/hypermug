@@ -4,7 +4,7 @@ import CoreGraphics
 // MARK: - Model
 
 public enum CapsMode: String, Equatable, CaseIterable {
-    case `default`, meh, hyper
+    case `default`, meh, threeMod, hyper
     public var isModifier: Bool { self != .default }
 }
 
@@ -150,7 +150,7 @@ public struct AppConfig: Equatable {
     public var mouse: MouseConfig
     public var trackpad: TrackpadConfig
 
-    public init(capsLock: CapsMode = .meh, caffeineOnLaunch: Bool = true, launchAtLogin: Bool = false,
+    public init(capsLock: CapsMode = .threeMod, caffeineOnLaunch: Bool = true, launchAtLogin: Bool = false,
                 autoUpdate: Bool = true,
                 mouse: MouseConfig = MouseConfig(), trackpad: TrackpadConfig = TrackpadConfig(),
                 helpers: [String: String] = [:], shellTimeoutSeconds: Double = 10) {
@@ -444,7 +444,7 @@ extension AppConfig: Codable {
         }
         if let raw = try c.decodeIfPresent(String.self, forKey: AnyKey("capsLock")) {
             guard let mode = CapsMode(rawValue: raw) else {
-                throw ConfigError(reason: "capsLock must be \"default\", \"meh\" or \"hyper\" (got \"\(raw)\")")
+                throw ConfigError(reason: "capsLock must be \"default\", \"meh\", \"threeMod\" or \"hyper\" (got \"\(raw)\")")
             }
             capsLock = mode
         }

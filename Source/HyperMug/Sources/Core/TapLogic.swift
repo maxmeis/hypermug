@@ -64,16 +64,17 @@ public func shouldInvertScroll(scrollPhase: Int64, momentumPhase: Int64) -> Bool
     scrollPhase == 0 && momentumPhase == 0
 }
 
-/// Meh = ⌃⌥⌘; Hyper = ⌃⌥⇧⌘; Default = none.
+/// Meh = ⌃⌥⇧; Three Mod = ⌃⌥⌘; Hyper = ⌃⌥⇧⌘; Default = none.
 public func capsModifierFlags(for mode: CapsMode) -> CGEventFlags {
     switch mode {
     case .default: return []
-    case .meh: return [.maskControl, .maskAlternate, .maskCommand]
+    case .meh: return [.maskControl, .maskAlternate, .maskShift]
+    case .threeMod: return [.maskControl, .maskAlternate, .maskCommand]
     case .hyper: return [.maskControl, .maskAlternate, .maskCommand, .maskShift]
     }
 }
 
-/// Flags of a key event while Caps is held: everything already on it (physically held modifiers) plus Meh/Hyper.
+/// Flags of a key event while Caps is held: everything already on it (physically held modifiers) plus the selected mode.
 public func flagsWhileCapsHeld(_ original: CGEventFlags, mode: CapsMode) -> CGEventFlags {
     guard mode.isModifier else { return original }
     return original.subtracting(.maskAlphaShift).union(capsModifierFlags(for: mode))

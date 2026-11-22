@@ -27,9 +27,9 @@ func statusLogicTests() {
     expectEqual(secureMenuTitle(holderName: "1Password"), "Blocked by Secure Input: 1Password…")
 
     // Config error alert: names the app, carries the reason and the file path.
-    let text = configErrorAlertText(ConfigError(reason: "capsLock must be \"default\", \"meh\" or \"hyper\""),
+    let text = configErrorAlertText(ConfigError(reason: "capsLock must be \"default\", \"meh\", \"threeMod\" or \"hyper\""),
                                     configPath: "~/.config/hypermug.toml")
     expectEqual(text.title, "HyperMug config error")
     expectEqual(text.body,
-                "capsLock must be \"default\", \"meh\" or \"hyper\"\n\n~/.config/hypermug.toml — last good config stays active.")
+                "capsLock must be \"default\", \"meh\", \"threeMod\" or \"hyper\"\n\n~/.config/hypermug.toml — last good config stays active.")
 }

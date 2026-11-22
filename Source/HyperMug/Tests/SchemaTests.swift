@@ -190,7 +190,7 @@ private func schemaStructureTests() {
     var candidates = (0x20...0x7E).map { String(UnicodeScalar(UInt8($0))) }
     candidates += (1...30).map { "f\($0)" }
     candidates += ["esc", "escape", "pgup", "pageup", "capslock", "fn", "command", "control", "plus", "minus", "return", "enter", "del",
-                   "backspace", "forwarddelete", "insert", "menu", "super", "win", "alt", "opt", "option", "meh", "hyper"]
+                   "backspace", "forwarddelete", "insert", "menu", "super", "win", "alt", "opt", "option", "meh", "threemod", "hyper"]
     for candidate in candidates.map({ $0.lowercased() }) where accepts([candidate]) || accepts([candidate, "a"]) {
         expect(tokenSet.contains(candidate), "parser accepts \"\(candidate)\" but the schema enum lacks it")
     }

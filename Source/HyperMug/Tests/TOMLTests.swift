@@ -107,6 +107,7 @@ private func exampleTests() {
     let decoded = try? validateConfigTOML(Data(issueExampleTOML.utf8)).get()
     let next = "/opt/homebrew/bin/aerospace workspace --no-stdin --wrap-around next"
     expectEqual(decoded?.config.capsLock, .meh)
+    expectEqual(try? validateConfigTOML(Data("capsLock = \"threeMod\"\n".utf8)).get().config.capsLock, .threeMod)
     expectEqual(decoded?.config.launchAtLogin, false)
     expectEqual(decoded?.config.helpers["nextWorkspace"], next)
     expectEqual(decoded?.config.mouse.buttons.back, .helper("previousWorkspace"))
@@ -375,10 +376,11 @@ private func serializerTests() {
     let defaults = encodeConfigTOML(.newFileDefaults, schemaURL: schemaURL, includeEmptyKeys: true)
     expectEqual(try? validateConfigTOML(defaults).get().config, .newFileDefaults)
     let defaultText = text(defaults)
+    expect(defaultText.contains("\ncapsLock = \"threeMod\"\n"), "new files select Three Mod")
     expect(defaultText.hasPrefix("#:schema \(schemaURL.absoluteString)\n\"$schema\" = \"\(schemaURL.absoluteString)\"\n\nautoUpdate = "), defaultText)
     expect(defaultText.contains("\nhelpers = {}\n") && defaultText.contains("\nthumb = {}\n") && defaultText.contains("\nshellTimeoutSeconds = 10\n")
            && defaultText.contains("\n[trackpad.threeFingerSwipe]\ndown = {}\n"), defaultText)
-    for config in [AppConfig(), .newFileDefaults, AppConfig(shellTimeoutSeconds: 2.5),
+    for config in [AppConfig(), .newFileDefaults, AppConfig(capsLock: .meh), AppConfig(capsLock: .hyper), AppConfig(shellTimeoutSeconds: 2.5),
                    AppConfig(mouse: MouseConfig(buttons: ButtonMap(thumb: .shortcut(try! parseShortcut(["meh", "\\"]).get()))))] {
         let data = encodeConfigTOML(config)
         expectEqual(try? validateConfigTOML(data).get().config, config, "TOML encoding round-trips \(text(data))")

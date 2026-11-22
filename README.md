@@ -15,7 +15,7 @@ HyperMug checks for updates once a day and offers to install them; **Check for U
 
 ## Features
 
-- **Caps Lock as Meh or Hyper:** hold for ⌃⌥⌘ or ⌃⌥⇧⌘; tap for Escape.
+- **Caps Lock as Three Mod, Meh, or Hyper:** Three Mod is Control+Option+Command (⌃⌥⌘); Meh is Control+Option+Shift (⌃⌥⇧); Hyper uses all four (⌃⌥⇧⌘). Tap Caps Lock for Escape.
 - **Stay Awake:** open the mug menu with a left or right click and use its checked **Stay Awake** item for this session; the next launch uses your saved preference.
 - **Trackpad swipes:** bind three- and four-finger swipes to shortcuts, shell commands, or shared named helpers.
 - **Mouse remapping:** map back/forward buttons, the MX Master 3S thumb button and horizontal wheel steps to the same actions, and invert wheel scrolling.
@@ -29,7 +29,7 @@ HyperMug requires macOS Accessibility and Input Monitoring permissions for its i
 Settings are stored in `~/.config/hypermug.toml`, the only configuration format. The file links to a schema inside the signed app bundle, so TOML editors such as Taplo or Even Better TOML can validate and complete it. See [Configuration](docs/configuration.md) for defaults, shared helpers, validation and the default 10-second shell deadline.
 
 ```toml
-capsLock = "meh"
+capsLock = "threeMod"
 
 [helpers]
 nextWorkspace = "/opt/homebrew/bin/aerospace workspace --no-stdin --wrap-around next"

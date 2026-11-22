@@ -49,11 +49,13 @@ private let carbonKeys: [(String, Int)] = [
     ("home", kVK_Home), ("end", kVK_End), ("pageup", kVK_PageUp), ("pagedown", kVK_PageDown),
 ]
 
-private let modifierTokens = ["cmd", "ctrl", "alt", "opt", "option", "shift", "meh", "hyper"]
+private let modifierTokens = ["cmd", "ctrl", "alt", "opt", "option", "shift", "meh", "threemod", "hyper"]
 
 func shortcutTests() {
     // Grammar: modifiers + exactly one key, case-insensitive, tokens kept as written.
-    expectShortcut(["meh", "k"], kVK_ANSI_K, [.maskControl, .maskAlternate, .maskCommand])
+    expectShortcut(["meh", "k"], kVK_ANSI_K, [.maskControl, .maskAlternate, .maskShift])
+    expectShortcut(["threeMod", "k"], kVK_ANSI_K, [.maskControl, .maskAlternate, .maskCommand])
+    expectShortcut(["THREEMOD", "k"], kVK_ANSI_K, [.maskControl, .maskAlternate, .maskCommand])
     expectShortcut(["hyper", "f13"], kVK_F13, [.maskControl, .maskAlternate, .maskShift, .maskCommand])
     expectShortcut(["cmd", "shift", "["], kVK_ANSI_LeftBracket, [.maskCommand, .maskShift])
     expectShortcut(["ctrl", "left"], kVK_LeftArrow, .maskControl)
@@ -66,10 +68,10 @@ func shortcutTests() {
     expectShortcut(["ctrl", "`"], kVK_ANSI_Grave, .maskControl)
     expectShortcut(["k", "cmd"], kVK_ANSI_K, .maskCommand)   // order does not matter
     expectShortcut(["alt", "opt", "option", "k"], kVK_ANSI_K, .maskAlternate)   // aliases are the same bit
-    expectShortcut(["cmd", "meh", "k"], kVK_ANSI_K, [.maskControl, .maskAlternate, .maskCommand])   // modifiers union
+    expectShortcut(["cmd", "meh", "k"], kVK_ANSI_K, [.maskControl, .maskAlternate, .maskCommand, .maskShift])   // modifiers union
 
     // Bad lists
-    for bad in [[], [""], ["+"], ["cmd", ""], ["cmd", "nope"], ["cmd"], ["meh"], ["a", "b"], ["cmd", "f21"],
+    for bad in [[], [""], ["+"], ["cmd", ""], ["cmd", "nope"], ["cmd"], ["meh"], ["threemod"], ["a", "b"], ["cmd", "f21"],
                 ["cmd+k"], ["cmd", "k", "esc"], ["  "]] {
         expect(parsed(bad) == nil, "shortcut \(bad) must be rejected")
     }

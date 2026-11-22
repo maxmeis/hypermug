@@ -4,7 +4,7 @@ import HyperMugCore
 
 /// Watches the physical Caps Lock key through IOHIDManager (keyboard usage page 0x07, usage 0x39), so it works whether
 /// macOS maps Caps Lock to "No Action" (the key then produces no CGEvents) or leaves it as Caps Lock.
-/// Open only while Meh/Hyper is on and the event tap is live. Needs Input Monitoring.
+/// Open only while a Caps Lock modifier mode and its event tap are active. Needs Input Monitoring.
 /// When to open or close is decided by Core's `CapsMonitorPolicy`; this class only talks to IOKit.
 final class CapsKeyMonitor {
     /// (down, monotonic nanoseconds)

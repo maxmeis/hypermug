@@ -440,7 +440,7 @@ private func capsEventTests() {
     expect(ports.debugLines.contains("caps down") && ports.debugLines.contains("caps up held_ms=50 esc=true"), "caps transitions in debug log")
 
     engine.capsKeyChanged(down: true, nowNanos: 100 * ms)
-    expectEqual(engine.handleTapEvent(TapEvent(type: .keyDown, keyCode: 40)).flags, Optional(CGEventFlags([.maskControl, .maskAlternate, .maskCommand])))
+    expectEqual(engine.handleTapEvent(TapEvent(type: .keyDown, keyCode: 40)).flags, Optional(CGEventFlags([.maskControl, .maskAlternate, .maskShift])))
     engine.capsKeyChanged(down: false, nowNanos: 120 * ms)
     expectEqual(ports.count("escape"), 1)
 
@@ -529,7 +529,7 @@ private func press(_ engine: Engine, _ ports: FakePorts, at t: UInt64, holdMs: U
 }
 
 private func capsLatchTests() {
-    for mode in [CapsMode.meh, .hyper] {
+    for mode in [CapsMode.meh, .threeMod, .hyper] {
         for toggle in [TogglePoint.beforeDown, .afterDown, .afterUp] {
             for tapLive in [true, false] {
                 // Rapid taps 15 ms apart, faster than any debounce; tap off = disabled by macOS or blocked by Secure Input.
@@ -645,7 +645,7 @@ private func capsLatchTests() {
     engine.sync()
     expectEqual(ports.calls.filter { $0.hasPrefix("check:") || $0.hasPrefix("clearCapsLock") }, ["clearCapsLock:read"])
 
-    // Checks scheduled before Meh/Hyper was turned off (or the tap went away) leave the native latch alone.
+    // Checks scheduled before the modifier mode was turned off (or the tap went away) leave the native latch alone.
     for off in [config(caps: .default, back: backAction), config(caps: .meh)] {
         (engine, ports) = makeEngine()
         engine.apply(config(caps: .meh))

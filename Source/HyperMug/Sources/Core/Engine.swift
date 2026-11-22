@@ -189,7 +189,7 @@ public final class Engine {
         }
     }
 
-    /// Native Caps Lock must stay off: Meh/Hyper is on and the tap that applies it is installed.
+    /// Native Caps Lock must stay off while a modifier mode and its event tap are active.
     private var capsLatchSuppressed: Bool { settings.capsMode.isModifier && installedMask != nil }
 
     private func scheduleCapsLatchCheck(attempt: Int) {

@@ -27,7 +27,7 @@ Quit and reopen HyperMug after a Homebrew upgrade. Existing Canary users should 
 
 HyperMug creates `~/.config/hypermug.toml` with defaults at first launch. A `~/.config/hypermug.json` from an earlier version is [not read](configuration.md#earlier-json-configuration). No settings are imported from other apps. The app requests Accessibility permission and prompts for Input Monitoring when needed. Review or grant them from **Doctor… → Permissions** in the menu. Relaunch HyperMug after granting Input Monitoring; the privileges window has a restart button.
 
-- **Accessibility** enables the keyboard and mouse event tap used by Caps Lock Meh/Hyper, side-button and wheel mappings, and scroll inversion.
+- **Accessibility** enables the keyboard and mouse event tap used by Caps Lock modifier modes, side-button and wheel mappings, and scroll inversion.
 - **Input Monitoring** enables raw Caps Lock detection and access to the MX Master 3S thumb button.
 
 Permission decisions depend on the app's identity and macOS policy. Production uses Developer ID signing; local builds reuse your own self-signed Keychain identity and stable designated requirement. First-time grants and identity changes still require normal consent. Verify actual retention with the diagnostic commands in [Signing and permission persistence](signing.md).
@@ -38,7 +38,7 @@ macOS's native swipe actions can conflict with custom bindings. Open **Doctor…
 
 ## Other input tools
 
-Quit Hyperkey or other Caps Lock remappers while HyperMug is using Meh/Hyper mode. Do not run OpenLogi or Logi Options+ while using MX Master 3S thumb-button remapping; both tools may compete for the same button. See [Troubleshooting](troubleshooting.md) for behavior and recovery details.
+Quit Hyperkey or other Caps Lock remappers while HyperMug is using Meh, Three Mod, or Hyper mode. Do not run OpenLogi or Logi Options+ while using MX Master 3S thumb-button remapping; both tools may compete for the same button. See [Troubleshooting](troubleshooting.md) for behavior and recovery details.
 
 ## Moving from MyMug
 
