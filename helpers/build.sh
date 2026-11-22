@@ -40,10 +40,17 @@ if [ "$RELEASE" = 1 ]; then
   [[ "${SIGN_ID:-}" == Developer\ ID\ Application:* ]] || { echo "error: release requires SIGN_ID=Developer ID Application: ..." >&2; exit 1; }
   security find-identity -v -p codesigning ${SIGN_KEYCHAIN:+"$SIGN_KEYCHAIN"} | grep -Fq "\"$SIGN_ID\"" || { echo "error: Developer ID identity unavailable" >&2; exit 1; }
 fi
+if [ "$VARIANT" = dev ] && [ -z "${SIGN_ID:-}" ]; then
+  SIGN_ID="$(./helpers/dev-signing.sh identity)"
+  DEV_REQUIREMENT="=designated => identifier \"$BUNDLE_ID\" and certificate leaf = H\"$SIGN_ID\""
+fi
 SIGN_ID="${SIGN_ID:--}"
-if [ "$SIGN_ID" != - ] && ! security find-identity -p codesigning ${SIGN_KEYCHAIN:+"$SIGN_KEYCHAIN"} | grep -Fq "\"$SIGN_ID\""; then
-  echo "error: signing identity $SIGN_ID not found." >&2
-  exit 1
+if [ "$SIGN_ID" != - ]; then
+  if [[ "$SIGN_ID" =~ ^[[:xdigit:]]{40}$ ]]; then
+    security find-identity -v -p codesigning ${SIGN_KEYCHAIN:+"$SIGN_KEYCHAIN"} | grep -Fq "$SIGN_ID" || { echo "error: signing identity $SIGN_ID not found." >&2; exit 1; }
+  else
+    security find-identity -v -p codesigning ${SIGN_KEYCHAIN:+"$SIGN_KEYCHAIN"} | grep -Fq "\"$SIGN_ID\"" || { echo "error: signing identity $SIGN_ID not found." >&2; exit 1; }
+  fi
 fi
 rm -rf "$APP" "$CORE"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks" "$APP/Contents/Resources"
@@ -67,8 +74,11 @@ PLIST="$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" "$PLIST"
-if [ "$VARIANT" = production ]; then
-  /usr/libexec/PlistBuddy -c "Add :SUFeedURL string $FEED" "$PLIST"
+if [ "$VARIANT" = production ] && [ "$CHANNEL_META" = production ]; then
+  /usr/libexec/PlistBuddy -c "Set :SUFeedURL $FEED" "$PLIST" 2>/dev/null || \
+    /usr/libexec/PlistBuddy -c "Add :SUFeedURL string $FEED" "$PLIST"
+else
+  /usr/libexec/PlistBuddy -c 'Delete :SUFeedURL' "$PLIST" 2>/dev/null || true
 fi
 KEY="$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$PLIST")"
 [[ "$KEY" =~ ^[A-Za-z0-9+/]{43}=$ && "$(printf '%s' "$KEY" | base64 -D | wc -c | tr -d ' ')" = 32 ]] || { echo "error: SUPublicEDKey must be a 32-byte base64 Ed25519 key" >&2; exit 1; }
@@ -88,6 +98,13 @@ for nested in "$VERSION_DIR/XPCServices/Installer.xpc" "$VERSION_DIR/XPCServices
   fi
 done
 codesign "${SIGN_OPTIONS[@]}" "$FRAMEWORK"
-codesign "${SIGN_OPTIONS[@]}" --identifier "$BUNDLE_ID" "$APP"
+if [ -n "${DEV_REQUIREMENT:-}" ]; then
+  codesign "${SIGN_OPTIONS[@]}" --identifier "$BUNDLE_ID" --requirements "$DEV_REQUIREMENT" "$APP"
+else
+  codesign "${SIGN_OPTIONS[@]}" --identifier "$BUNDLE_ID" "$APP"
+fi
 codesign --verify --deep --strict --verbose=2 "$APP"
+if [ -n "${DEV_REQUIREMENT:-}" ]; then
+  codesign --verify --strict -R="identifier \"$BUNDLE_ID\" and certificate leaf = H\"$SIGN_ID\"" "$APP"
+fi
 echo "Built: $APP"

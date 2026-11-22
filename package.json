@@ -3,7 +3,8 @@
   "private": true,
   "description": "Dev tooling for HyperMug (git hooks, commit message lint). The app itself is Swift.",
   "scripts": {
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:release-queue": "node --test helpers/test_semantic_release.mjs"
   },
   "volta": {
     "node": "24.19.0"
@@ -11,6 +12,10 @@
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",
-    "husky": "^9.1.7"
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/release-notes-generator": "^14.1.1",
+    "conventional-changelog-conventionalcommits": "^8.0.0",
+    "husky": "^9.1.7",
+    "semantic-release": "^25.0.9"
   }
 }

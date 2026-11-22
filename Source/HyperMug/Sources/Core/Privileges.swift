@@ -41,7 +41,7 @@ public func privilegesAlert(accessibility: Bool, inputMonitoring: Bool) -> Privi
         "\(granted ? "✅" : "❌") \(name) — \(need)"
     }
     let body = [
-        line(accessibility, "Accessibility", "needed for the keyboard/mouse event tap (Caps Meh/Hyper, side buttons, scroll inversion)"),
+        line(accessibility, "Accessibility", "needed for the keyboard/mouse event tap (Caps Lock modifiers, side buttons, scroll inversion)"),
         line(inputMonitoring, "Input Monitoring", "needed for Caps Lock detection and the thumb button"),
         "",
         "After granting Input Monitoring, relaunch HyperMug.",

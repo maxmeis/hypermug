@@ -440,7 +440,7 @@ private func capsEventTests() {
     expect(ports.debugLines.contains("caps down") && ports.debugLines.contains("caps up held_ms=50 esc=true"), "caps transitions in debug log")
 
     engine.capsKeyChanged(down: true, nowNanos: 100 * ms)
-    expectEqual(engine.handleTapEvent(TapEvent(type: .keyDown, keyCode: 40)).flags, Optional(CGEventFlags([.maskControl, .maskAlternate, .maskCommand])))
+    expectEqual(engine.handleTapEvent(TapEvent(type: .keyDown, keyCode: 40)).flags, Optional(CGEventFlags([.maskControl, .maskAlternate, .maskShift])))
     engine.capsKeyChanged(down: false, nowNanos: 120 * ms)
     expectEqual(ports.count("escape"), 1)
 
@@ -529,7 +529,7 @@ private func press(_ engine: Engine, _ ports: FakePorts, at t: UInt64, holdMs: U
 }
 
 private func capsLatchTests() {
-    for mode in [CapsMode.meh, .hyper] {
+    for mode in [CapsMode.meh, .threeMod, .hyper] {
         for toggle in [TogglePoint.beforeDown, .afterDown, .afterUp] {
             for tapLive in [true, false] {
                 // Rapid taps 15 ms apart, faster than any debounce; tap off = disabled by macOS or blocked by Secure Input.
@@ -645,7 +645,7 @@ private func capsLatchTests() {
     engine.sync()
     expectEqual(ports.calls.filter { $0.hasPrefix("check:") || $0.hasPrefix("clearCapsLock") }, ["clearCapsLock:read"])
 
-    // Checks scheduled before Meh/Hyper was turned off (or the tap went away) leave the native latch alone.
+    // Checks scheduled before the modifier mode was turned off (or the tap went away) leave the native latch alone.
     for off in [config(caps: .default, back: backAction), config(caps: .meh)] {
         (engine, ports) = makeEngine()
         engine.apply(config(caps: .meh))
@@ -686,15 +686,15 @@ private func tapEventTests() {
 
     // Wheel bindings: the physical direction is consumed and its resolved helper runs once.
     var wheelConfig = AppConfig(capsLock: .default, caffeineOnLaunch: false,
-                                mouse: MouseConfig(verticalWheel: WheelMap(down: .helper("next"))), helpers: ["next": "echo next"])
+                                mouse: MouseConfig(horizontalWheel: WheelMap(right: .helper("next"))), helpers: ["next": "echo next"])
     engine.apply(wheelConfig)
     expectEqual(engine.settings.mask, scrollBit, "a wheel binding alone needs the scroll tap")
-    let down = TapEvent(type: .scrollWheel, vertical: ScrollAxis(line: -1, fixed: -1, point: -10), nowNanos: 1_000_000_000)
-    expectEqual(engine.handleTapEvent(down), TapDecision(pass: false))
+    let right = TapEvent(type: .scrollWheel, horizontal: ScrollAxis(line: -1, fixed: -1, point: -10), nowNanos: 1_000_000_000)
+    expectEqual(engine.handleTapEvent(right), TapDecision(horizontal: .zero))
     expectEqual(ports.ran.last, .shell("echo next"))
-    let up = TapEvent(type: .scrollWheel, vertical: ScrollAxis(line: 1, fixed: 1, point: 10), nowNanos: 2_000_000_000)
-    expectEqual(engine.handleTapEvent(up), TapDecision(), "unmapped direction scrolls normally")
-    wheelConfig.mouse.verticalWheel = WheelMap()
+    let left = TapEvent(type: .scrollWheel, horizontal: ScrollAxis(line: 1, fixed: 1, point: 10), nowNanos: 2_000_000_000)
+    expectEqual(engine.handleTapEvent(left), TapDecision(), "unmapped direction scrolls normally")
+    wheelConfig.mouse.horizontalWheel = WheelMap()
     engine.apply(wheelConfig)
     expectEqual(engine.settings.mask, 0, "no wheel binding, no scroll tap")
 

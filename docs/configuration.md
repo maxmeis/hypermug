@@ -16,7 +16,7 @@ This is the configuration HyperMug writes on first launch:
 
 autoUpdate = true
 caffeineOnLaunch = true
-capsLock = "meh"
+capsLock = "threeMod"
 helpers = {}
 launchAtLogin = true
 shellTimeoutSeconds = 10
@@ -26,13 +26,13 @@ back.shell = "/opt/homebrew/bin/aerospace workspace --no-stdin --wrap-around nex
 forward.shell = "/opt/homebrew/bin/aerospace workspace --no-stdin --wrap-around prev"
 thumb = {}
 
+[mouse.horizontalWheel]
+left = {}
+right = {}
+
 [mouse.invertScroll]
 horizontal = false
 vertical = false
-
-[mouse.verticalWheel]
-down = {}
-up = {}
 
 [trackpad.fourFingerSwipe]
 down = {}
@@ -49,11 +49,11 @@ up = {}
 
 `back.shell = "…"` is TOML's dotted-key form of the table `back = { shell = "…" }`; both spellings mean the same thing. A `[mouse.buttons]` header opens the `buttons` table inside `mouse`.
 
-On a new or empty file, HyperMug shows every button, wheel and swipe direction, including unassigned slots as `{}` and an empty `helpers` table. These placeholders run no action; they make available keys visible while editing. The defaults are `capsLock = "meh"`, `caffeineOnLaunch = true`, `autoUpdate = true`, `launchAtLogin = true`, both scroll inversions off, and the six AeroSpace mappings shown. These shell actions require AeroSpace at the specified path to work. Existing preferences are preserved; only the `$schema` metadata is updated when the installed bundle location changes. Missing keys in an existing file retain their previous fallback values; in particular, omitted `launchAtLogin` remains `false` and omitted mappings remain unmapped.
+On a new or empty file, HyperMug shows every button, wheel and swipe direction, including unassigned slots as `{}` and an empty `helpers` table. These placeholders run no action; they make available keys visible while editing. The defaults are `capsLock = "threeMod"`, `caffeineOnLaunch = true`, `autoUpdate = true`, `launchAtLogin = true`, both scroll inversions off, and the six AeroSpace mappings shown. These shell actions require AeroSpace at the specified path to work. Existing preferences are preserved; only the `$schema` metadata is updated when the installed bundle location changes. Missing keys in an existing file retain their previous fallback values; in particular, omitted `launchAtLogin` remains `false` and omitted mappings remain unmapped.
 
 ### AeroSpace example
 
-[`docs/examples/aerospace.toml`](examples/aerospace.toml) is the owner's own setup: Caps Lock as Meh, the mouse side buttons and three-finger swipes switch AeroSpace workspaces, and four-finger swipes switch windows. It uses shared helpers and needs AeroSpace at `/opt/homebrew/bin/aerospace`. The test suite checks that this file stays valid.
+[`docs/examples/aerospace.toml`](examples/aerospace.toml) is the owner's own setup: Caps Lock as Three Mod, the mouse side buttons and three-finger swipes switch AeroSpace workspaces, and horizontal wheel steps and four-finger swipes switch windows. It uses shared helpers and needs AeroSpace at `/opt/homebrew/bin/aerospace`. The test suite checks that this file stays valid.
 
 ```toml
 #:schema file:///Applications/HyperMug.app/Contents/Resources/hypermug.schema.json
@@ -61,13 +61,13 @@ On a new or empty file, HyperMug shows every button, wheel and swipe direction, 
 
 autoUpdate = true
 caffeineOnLaunch = true
-capsLock = "meh"
+capsLock = "threeMod"
 launchAtLogin = false
 
 [helpers]
-nextWindow = "/opt/homebrew/bin/aerospace focus --wrap-around dfs-next"
+aerospaceWindowNext = "/opt/homebrew/bin/aerospace focus --wrap-around dfs-next"
+aerospaceWindowPrev = "/opt/homebrew/bin/aerospace focus --wrap-around dfs-prev"
 nextWorkspace = "/opt/homebrew/bin/aerospace workspace --no-stdin --wrap-around next"
-previousWindow = "/opt/homebrew/bin/aerospace focus --wrap-around dfs-prev"
 previousWorkspace = "/opt/homebrew/bin/aerospace workspace --no-stdin --wrap-around prev"
 
 [mouse.buttons]
@@ -75,13 +75,17 @@ back.helper = "previousWorkspace"
 forward.helper = "nextWorkspace"
 thumb = {}
 
+[mouse.horizontalWheel]
+left.helper = "aerospaceWindowNext"
+right.helper = "aerospaceWindowPrev"
+
 [mouse.invertScroll]
 horizontal = false
 vertical = false
 
 [trackpad.fourFingerSwipe]
-left.helper = "nextWindow"
-right.helper = "previousWindow"
+left.helper = "aerospaceWindowNext"
+right.helper = "aerospaceWindowPrev"
 
 [trackpad.threeFingerSwipe]
 left.helper = "nextWorkspace"
@@ -109,7 +113,7 @@ TOML is the only configuration format. Earlier versions stored settings in `~/.c
 
 | Key | Values and behavior |
 | --- | --- |
-| `capsLock` | `"default"` leaves Caps Lock alone; `"meh"` maps hold to ⌃⌥⌘ and tap to Escape; `"hyper"` maps hold to ⌃⌥⇧⌘ and tap to Escape. |
+| `capsLock` | `"default"` leaves Caps Lock alone; `"meh"` maps hold to ⌃⌥⇧; `"threeMod"` maps hold to ⌃⌥⌘; `"hyper"` maps hold to ⌃⌥⇧⌘. Each modifier mode sends Escape on tap. |
 | `caffeineOnLaunch` | Whether Stay Awake starts enabled. The menu's checked **Stay Awake** item changes the running session only; it does not edit this preference. |
 | `autoUpdate` | Whether the Production app checks its update feed automatically, once a day. Defaults to `true`; **Check for Updates…** in the menu works either way. Dev builds have no update feed. |
 | `launchAtLogin` | Registers HyperMug as a login item when true. |
@@ -118,27 +122,29 @@ TOML is the only configuration format. Earlier versions stored settings in `~/.c
 | `mouse.invertScroll.vertical` | Inverts mouse wheel vertical scrolling relative to the current macOS direction. |
 | `mouse.invertScroll.horizontal` | Inverts the MX Master 3S horizontal/thumb wheel relative to the current macOS direction. |
 | `mouse.buttons` | Actions for `back`, `forward`, and `thumb` buttons. |
-| `mouse.verticalWheel` | Actions for physical vertical wheel steps, `up` and `down`. Unbound by default; see [Wheel bindings](#wheel-bindings). |
+| `mouse.horizontalWheel` | Actions for physical horizontal wheel steps, `left` and `right`. Unbound by default; see [Wheel bindings](#wheel-bindings). |
 | `trackpad` | Optional `threeFingerSwipe` and `fourFingerSwipe` actions in each of `left`, `right`, `up`, and `down`. |
 
 Scroll inversion affects mouse wheels only, not trackpads or Magic Mouse scrolling.
 
 ## Wheel bindings
 
-`mouse.verticalWheel.up` and `.down` bind wheel steps to the same actions as buttons and swipes. For example, with the side buttons switching AeroSpace workspaces, the wheel can move focus between windows:
+`mouse.horizontalWheel.left` and `.right` bind horizontal/thumb wheel steps to the same actions as buttons and swipes. For example, with the side buttons switching AeroSpace workspaces, the horizontal wheel can move focus between windows:
 
 ```toml
 [helpers]
-nextWindow = "/opt/homebrew/bin/aerospace focus --boundaries-action wrap-around-the-workspace right"
-previousWindow = "/opt/homebrew/bin/aerospace focus --boundaries-action wrap-around-the-workspace left"
+aerospaceWindowNext = "/opt/homebrew/bin/aerospace focus --wrap-around dfs-next"
+aerospaceWindowPrev = "/opt/homebrew/bin/aerospace focus --wrap-around dfs-prev"
 
-[mouse.verticalWheel]
-down.helper = "nextWindow"
-up.helper = "previousWindow"
+[mouse.horizontalWheel]
+left.helper = "aerospaceWindowNext"
+right.helper = "aerospaceWindowPrev"
 ```
 
-- A mapped direction is consumed: its wheel events no longer scroll, and each wheel step runs the action once. An unmapped direction, and horizontal scrolling, keep scrolling normally.
-- `up` means rolling the wheel away from you and `down` toward you, whatever the Natural Scrolling setting. `invertScroll.vertical` does not swap bindings; it only reverses the scrolling of an unmapped direction.
+Older configurations may contain an empty `[mouse.verticalWheel]` table with `up = {}` and `down = {}`. HyperMug ignores those unassigned placeholders, so your other settings keep working; you can remove that table. Configured vertical wheel actions are no longer supported and must be replaced with horizontal `left`/`right` bindings.
+
+- A mapped horizontal direction is consumed: it no longer scrolls horizontally, and each wheel step runs the action once. An unmapped direction and vertical scrolling keep scrolling normally. Vertical wheel action bindings are not supported.
+- `left` and `right` refer to the physical horizontal wheel direction, whatever the Natural Scrolling setting. `invertScroll.horizontal` does not swap bindings; it only reverses the scrolling of an unmapped direction.
 - Clicky wheels count one step per notch. High-resolution or smooth-scrolling wheels accumulate their pixel travel into steps. Steps are at least 150 ms apart, and one continuous roll, such as a free-spinning flick, runs at most three actions; pause for about 0.3 s to continue.
 - Only mouse wheels are bound. Trackpad and Magic Mouse scrolling is never consumed.
 - Wheel bindings use the Accessibility event tap. Other tools that rewrite scroll events, such as smooth-scrolling utilities, can change what HyperMug sees.
@@ -151,7 +157,9 @@ An empty action table (`{}`) leaves that slot unassigned. To assign an action, s
 - `shell`: a supervised command run by `/bin/sh -c`; output is discarded. GUI apps receive a minimal `PATH` (`/usr/bin:/bin:/usr/sbin:/sbin`), so use absolute paths for other tools. Use `open` to launch an app, file, or URL. TOML literal strings (`'...'`) need no escaping for backslashes and double quotes.
 - `helper`: the name of a command in top-level `helpers`, such as `up.helper = "mission-control"`. A helper always resolves to a shell command; nested helper aliases are not supported. An unknown name makes the configuration invalid.
 
-Shortcut tokens are case-insensitive. Modifiers: `cmd`, `ctrl`, `alt` (`opt` and `option` aliases), `shift`, `meh` (ctrl+alt+cmd), and `hyper` (ctrl+alt+shift+cmd). Keys: `a`–`z`, `0`–`9`, `[ ] ; ' , . / \\ - = \``, `f1`–`f20`, `left`, `right`, `up`, `down`, `escape` (`esc`), `return` (`enter`), `tab`, `space`, `delete` (`backspace`), `forwarddelete`, `home`, `end`, `pageup`, and `pagedown`.
+Shortcut tokens are case-insensitive. Modifiers: `cmd`, `ctrl`, `alt` (`opt` and `option` aliases), `shift`, `meh` (ctrl+alt+shift), `threemod` (ctrl+alt+cmd), and `hyper` (ctrl+alt+shift+cmd). Keys: `a`–`z`, `0`–`9`, `[ ] ; ' , . / \\ - = \``, `f1`–`f20`, `left`, `right`, `up`, `down`, `escape` (`esc`), `return` (`enter`), `tab`, `space`, `delete` (`backspace`), `forwarddelete`, `home`, `end`, `pageup`, and `pagedown`.
+
+`meh` now means the standard Meh chord, Control+Option+Shift (⌃⌥⇧). Older configurations that explicitly set `capsLock = "meh"` previously received Control+Option+Command (⌃⌥⌘); they now receive the corrected Meh chord. To keep the old behavior, change that setting to `capsLock = "threeMod"`. Shortcut arrays using `"meh"` likewise now send ⌃⌥⇧; use `"threemod"` for ⌃⌥⌘.
 
 For example, trackpad mappings can be added alongside `mouse`:
 

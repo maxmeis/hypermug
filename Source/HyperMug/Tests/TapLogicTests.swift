@@ -9,7 +9,8 @@ private let scrollBit: CGEventMask = 1 << CGEventType.scrollWheel.rawValue
 
 private let back = ButtonAction.shell("back-cmd")
 private let forward = ButtonAction.shell("forward-cmd")
-private let meh: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
+private let meh: CGEventFlags = [.maskControl, .maskAlternate, .maskShift]
+private let threeMod: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
 private let hyper: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand, .maskShift]
 
 private func settings(caps: CapsMode = .default, back: ButtonAction? = nil, forward: ButtonAction? = nil,
@@ -90,8 +91,8 @@ private func settingsMaskTests() {
     expectEqual(settings(vertical: true).mask, scrollBit)
     expectEqual(settings(horizontal: true).mask, scrollBit)
     expect(settings(horizontal: true).needsTap, "scroll inversion needs the tap")
-    expectEqual(settings(wheel: WheelMap(up: back)).mask, scrollBit)
-    expectEqual(settings(wheel: WheelMap(down: forward)).mask, scrollBit)
+    expectEqual(settings(wheel: WheelMap(left: back)).mask, scrollBit)
+    expectEqual(settings(wheel: WheelMap(right: forward)).mask, scrollBit)
     expectEqual(settings(caps: .meh, back: back, forward: forward, vertical: true, horizontal: true).mask,
                 keyBits | mouseBits | scrollBit)
 
@@ -110,18 +111,22 @@ private func settingsMaskTests() {
     config.mouse.buttons.back = back
     config.mouse.invertScroll = InvertScroll(vertical: false, horizontal: true)
     expectEqual(TapSettings(config: config), settings(caps: .hyper, back: back, forward: forward, horizontal: true))
-    config.mouse.verticalWheel = WheelMap(up: back)
-    expectEqual(TapSettings(config: config).wheel, WheelMap(up: back), "wheel bindings reach the tap")
+    config.mouse.horizontalWheel = WheelMap(left: back)
+    expectEqual(TapSettings(config: config).wheel, WheelMap(left: back), "wheel bindings reach the tap")
 }
 
 private func capsFlagsTests() {
     expectEqual(capsModifierFlags(for: .default), [])
     expectEqual(capsModifierFlags(for: .meh), meh)
+    expectEqual(capsModifierFlags(for: .threeMod), threeMod)
     expectEqual(capsModifierFlags(for: .hyper), hyper)
 
     expectEqual(flagsWhileCapsHeld([], mode: .meh), meh)
+    expectEqual(flagsWhileCapsHeld([], mode: .threeMod), threeMod)
     expectEqual(flagsWhileCapsHeld([], mode: .hyper), hyper)
     expectEqual(flagsWhileCapsHeld(.maskShift, mode: .meh), meh.union(.maskShift))
+    expectEqual(flagsWhileCapsHeld(.maskShift, mode: .threeMod), threeMod.union(.maskShift))
+    expectEqual(flagsWhileCapsHeld(.maskCommand, mode: .meh), meh.union(.maskCommand))
     expectEqual(flagsWhileCapsHeld(.maskShift, mode: .hyper), hyper)
     expectEqual(flagsWhileCapsHeld([.maskSecondaryFn, .maskShift], mode: .meh), meh.union([.maskSecondaryFn, .maskShift]))
     expectEqual(flagsWhileCapsHeld([.maskShift, .maskCommand], mode: .default), [.maskShift, .maskCommand])
@@ -281,14 +286,14 @@ private func scrollEventTests() {
 private func capsKeyEventTests() {
     var state = TapState()
 
-    // The Caps Lock toggle event never reaches apps in Meh/Hyper mode; other keycodes and default mode pass.
+    // The Caps Lock toggle event never reaches apps in a modifier mode; other keycodes and default mode pass.
     let toggle = TapEvent(type: .flagsChanged, keyCode: 57)
     expectEqual(state.handle(toggle, settings: settings(caps: .meh)).0, TapDecision(pass: false))
     expectEqual(state.handle(toggle, settings: settings(caps: .hyper)).0, TapDecision(pass: false))
     expectEqual(state.handle(toggle, settings: settings(caps: .default)).0, TapDecision())
     expectEqual(state.handle(TapEvent(type: .flagsChanged, keyCode: 56), settings: settings(caps: .meh)).0, TapDecision())
 
-    for mode in [CapsMode.meh, .hyper] {
+    for mode in [CapsMode.meh, .threeMod, .hyper] {
         var clean = TapState()
         let capsToggle = TapEvent(type: .flagsChanged, keyCode: 57, flags: [.maskAlphaShift, .maskShift])
         let toggled = clean.handle(capsToggle, settings: settings(caps: mode))
@@ -315,9 +320,10 @@ private func capsKeyEventTests() {
     let key = TapEvent(type: .keyDown, keyCode: 40, flags: .maskShift)
     expectNoop(state.handle(key, settings: settings(caps: .meh)))
 
-    // Held: both key phases get Meh/Hyper added, physical modifiers are kept.
+    // Held: both key phases get the mode flags; physical modifiers are kept.
     _ = state.capsKey(down: true, nowNanos: 0)
     expectEqual(state.handle(key, settings: settings(caps: .meh)).0, TapDecision(flags: meh.union(.maskShift)))
+    expectEqual(state.handle(key, settings: settings(caps: .threeMod)).0, TapDecision(flags: threeMod.union(.maskShift)))
     expectEqual(state.handle(TapEvent(type: .keyUp, keyCode: 40), settings: settings(caps: .hyper)).0, TapDecision(flags: hyper))
     // Default mode ignores a held Caps state.
     expectEqual(state.handle(key, settings: settings(caps: .default)).0, TapDecision())
@@ -403,125 +409,125 @@ private func effectiveMaskTests() {
     expectEqual(state.handle(mouse(.otherMouseUp, button: 3), settings: settings(back: back)).0, TapDecision())
 }
 
-// MARK: - Vertical wheel bindings
+// MARK: - Horizontal wheel bindings
 
-private let wheelUp = ButtonAction.helper("previousWindow")
-private let wheelDown = ButtonAction.shell("next-window")
+private let wheelLeft = ButtonAction.helper("nextWindow")
+private let wheelRight = ButtonAction.shell("previous-window")
 
-/// A mouse-wheel notch (line delta) or a high-resolution continuous chunk (point delta), as seen by the tap.
+/// A horizontal thumb-wheel notch (line delta) or a high-resolution continuous chunk (point delta).
 private func notch(_ lines: Int64, at time: UInt64, inverted: Bool = false, phase: Int64 = 0, momentum: Int64 = 0) -> TapEvent {
     TapEvent(type: .scrollWheel, scrollPhase: phase, momentumPhase: momentum,
-             vertical: ScrollAxis(line: lines, fixed: Double(lines), point: lines * 10),
+             horizontal: ScrollAxis(line: lines, fixed: Double(lines), point: lines * 10),
              invertedFromDevice: inverted, nowNanos: time)
 }
 
 private func smooth(_ points: Int64, at time: UInt64, phase: Int64 = 0, momentum: Int64 = 0) -> TapEvent {
     TapEvent(type: .scrollWheel, scrollPhase: phase, momentumPhase: momentum,
-             vertical: ScrollAxis(line: points > 0 ? 1 : -1, fixed: Double(points) / 10, point: points),
+             horizontal: ScrollAxis(line: points > 0 ? 1 : -1, fixed: Double(points) / 10, point: points),
              continuous: true, nowNanos: time)
 }
 
 private func wheelStepTests() {
     let gap = WheelSteps.rollGapNanos, interval = WheelSteps.minIntervalNanos, threshold = WheelSteps.continuousStepPoints
-    // Notches: one step each, spaced at least the minimum interval.
     var steps = WheelSteps()
-    expect(steps.step(.down, continuousPoints: nil, nowNanos: 1_000 * ms), "first notch fires")
-    expect(!steps.step(.down, continuousPoints: nil, nowNanos: 1_000 * ms + interval - 1), "too soon after a step")
-    expect(steps.step(.down, continuousPoints: nil, nowNanos: 1_000 * ms + interval), "interval boundary fires")
+    expect(steps.step(.right, continuousPoints: nil, nowNanos: 1_000 * ms), "first notch fires")
+    expect(!steps.step(.right, continuousPoints: nil, nowNanos: 1_000 * ms + interval - 1), "too soon after a step")
+    expect(steps.step(.right, continuousPoints: nil, nowNanos: 1_000 * ms + interval), "interval boundary fires")
 
-    // Free spin: a continuous stream fires at most maxStepsPerRoll actions until a quiet gap.
     steps = WheelSteps()
     var fired = 0
-    for i in 0..<200 where steps.step(.down, continuousPoints: nil, nowNanos: UInt64(i) * 10 * ms) { fired += 1 }
+    for i in 0..<200 where steps.step(.right, continuousPoints: nil, nowNanos: UInt64(i) * 10 * ms) { fired += 1 }
     expectEqual(fired, WheelSteps.maxStepsPerRoll, "a 2 s free-spin flick is limited")
-    expect(!steps.step(.down, continuousPoints: nil, nowNanos: 1_990 * ms + gap), "gap boundary still continues the roll")
-    expect(steps.step(.down, continuousPoints: nil, nowNanos: 1_990 * ms + 2 * gap + 1), "a quiet gap starts a new roll")
+    expect(!steps.step(.right, continuousPoints: nil, nowNanos: 1_990 * ms + gap), "gap boundary still continues the roll")
+    expect(steps.step(.right, continuousPoints: nil, nowNanos: 1_990 * ms + 2 * gap + 1), "a quiet gap starts a new roll")
 
-    // Continuous travel accumulates to the threshold; leftovers of a limited step are discarded.
     steps = WheelSteps()
-    expect(!steps.step(.up, continuousPoints: threshold / 2, nowNanos: 1_000 * ms), "half a step")
-    expect(!steps.step(.up, continuousPoints: threshold / 2 - 0.5, nowNanos: 1_010 * ms), "still below the threshold")
-    expect(steps.step(.up, continuousPoints: 0.5, nowNanos: 1_020 * ms), "threshold reached")
-    expect(!steps.step(.up, continuousPoints: threshold, nowNanos: 1_030 * ms), "the rest of the same notch is rate-limited")
-    expect(!steps.step(.up, continuousPoints: threshold / 2, nowNanos: 1_020 * ms + interval), "limited travel was discarded")
-    expect(steps.step(.up, continuousPoints: threshold / 2, nowNanos: 1_020 * ms + interval + 1), "fresh travel fires again")
+    expect(!steps.step(.left, continuousPoints: threshold / 2, nowNanos: 1_000 * ms), "half a step")
+    expect(!steps.step(.left, continuousPoints: threshold / 2 - 0.5, nowNanos: 1_010 * ms), "still below the threshold")
+    expect(steps.step(.left, continuousPoints: 0.5, nowNanos: 1_020 * ms), "threshold reached")
+    expect(!steps.step(.left, continuousPoints: threshold, nowNanos: 1_030 * ms), "the rest of the same notch is rate-limited")
+    expect(!steps.step(.left, continuousPoints: threshold / 2, nowNanos: 1_020 * ms + interval), "limited travel was discarded")
+    expect(steps.step(.left, continuousPoints: threshold / 2, nowNanos: 1_020 * ms + interval + 1), "fresh travel fires again")
 
-    // Old travel does not carry over a quiet gap; a reversal starts a new roll.
     steps = WheelSteps()
-    expect(!steps.step(.up, continuousPoints: threshold - 1, nowNanos: 1_000 * ms), "almost a step")
-    expect(!steps.step(.up, continuousPoints: 1, nowNanos: 1_000 * ms + gap + 1), "stale travel is dropped")
+    expect(!steps.step(.left, continuousPoints: threshold - 1, nowNanos: 1_000 * ms), "almost a step")
+    expect(!steps.step(.left, continuousPoints: 1, nowNanos: 1_000 * ms + gap + 1), "stale travel is dropped")
     steps = WheelSteps()
-    expect(!steps.step(.up, continuousPoints: threshold - 1, nowNanos: 1_000 * ms), "almost a step up")
-    expect(!steps.step(.down, continuousPoints: 1, nowNanos: 1_010 * ms), "reversal drops travel")
+    expect(!steps.step(.left, continuousPoints: threshold - 1, nowNanos: 1_000 * ms), "almost a step left")
+    expect(!steps.step(.right, continuousPoints: 1, nowNanos: 1_010 * ms), "reversal drops travel")
     for i in 0..<WheelSteps.maxStepsPerRoll {
-        expect(steps.step(.up, continuousPoints: nil, nowNanos: 2_000 * ms + UInt64(i) * interval), "roll step \(i)")
+        expect(steps.step(.left, continuousPoints: nil, nowNanos: 2_000 * ms + UInt64(i) * interval), "roll step \(i)")
     }
-    expect(steps.step(.down, continuousPoints: nil, nowNanos: 2_000 * ms + 3 * interval), "a reversal resets the roll cap")
+    expect(steps.step(.right, continuousPoints: nil, nowNanos: 2_000 * ms + 3 * interval), "a reversal resets the roll cap")
     steps.reset()
-    expect(steps.step(.down, continuousPoints: nil, nowNanos: 2_000 * ms + 4 * interval), "reset ends the roll")
-    // A clock that goes backwards counts as no elapsed time.
-    expect(!steps.step(.down, continuousPoints: nil, nowNanos: 0), "earlier timestamp is too soon")
+    expect(steps.step(.right, continuousPoints: nil, nowNanos: 2_000 * ms + 4 * interval), "reset ends the roll")
+    expect(!steps.step(.right, continuousPoints: nil, nowNanos: 0), "earlier timestamp is too soon")
 }
 
 private func wheelBindingTests() {
-    let both = settings(wheel: WheelMap(up: wheelUp, down: wheelDown))
+    let both = settings(wheel: WheelMap(left: wheelLeft, right: wheelRight))
     var state = TapState()
 
-    // Mapped notches are consumed and run their action; physical down is a negative delta.
     var result = state.handle(notch(1, at: 1_000 * ms), settings: both)
-    expectEqual(result.0, TapDecision(pass: false))
-    expectEqual(result.1, [.run(wheelUp)])
+    expectEqual(result.0, TapDecision(horizontal: .zero))
+    expectEqual(result.1, [.run(wheelLeft)], "positive horizontal delta is physical left")
     result = state.handle(notch(-3, at: 2_000 * ms), settings: both)
-    expectEqual(result.1, [.run(wheelDown)], "an accelerated notch is one step")
-    // Rate-limited events are still consumed, so the window does not scroll in between.
+    expectEqual(result.1, [.run(wheelRight)], "negative horizontal delta is physical right")
     result = state.handle(notch(-1, at: 2_010 * ms), settings: both)
-    expectEqual(result.0, TapDecision(pass: false))
+    expectEqual(result.0, TapDecision(horizontal: .zero), "rate-limited horizontal movement is still removed")
     expectEqual(result.1, [])
 
-    // Natural Scrolling: bindings use the physical direction.
     result = state.handle(notch(-1, at: 3_000 * ms, inverted: true), settings: both)
-    expectEqual(result.1, [.run(wheelUp)], "inverted negative delta is physical up")
+    expectEqual(result.1, [.run(wheelLeft)], "Natural Scrolling preserves physical left")
+    let onlyRight = settings(wheel: WheelMap(right: wheelRight))
+    expectNoop(state.handle(notch(1, at: 4_000 * ms), settings: onlyRight))
+    let invertedRight = settings(horizontal: true, wheel: WheelMap(right: wheelRight))
+    result = state.handle(notch(1, at: 4_100 * ms), settings: invertedRight)
+    expectEqual(result.0, TapDecision(horizontal: ScrollAxis(line: -1, fixed: -1, point: -10)),
+                "unmapped left remains subject to horizontal inversion")
+    result = state.handle(notch(-1, at: 4_200 * ms), settings: invertedRight)
+    expectEqual(result.0, TapDecision(horizontal: .zero))
+    expectEqual(result.1, [.run(wheelRight)], "horizontal inversion does not swap bindings")
 
-    // Unmapped direction: untouched pass-through, or the configured inversion.
-    let onlyDown = settings(wheel: WheelMap(down: wheelDown))
-    expectNoop(state.handle(notch(1, at: 4_000 * ms), settings: onlyDown))
-    let invertedDown = settings(vertical: true, wheel: WheelMap(down: wheelDown))
-    result = state.handle(notch(1, at: 4_100 * ms), settings: invertedDown)
-    expectEqual(result.0, TapDecision(vertical: ScrollAxis(line: -1, fixed: -1, point: -10)), "unmapped up is still inverted")
-    // Physical down is bound regardless of invertScroll.vertical.
-    result = state.handle(notch(-1, at: 4_200 * ms), settings: invertedDown)
-    expectEqual(result.0, TapDecision(pass: false))
-    expectEqual(result.1, [.run(wheelDown)])
-    // An unmapped scroll ends the roll.
     var roll = TapState()
-    for i in 0..<UInt64(WheelSteps.maxStepsPerRoll) { _ = roll.handle(notch(-1, at: (5_000 + i * 200) * ms), settings: onlyDown) }
-    expectEqual(roll.handle(notch(-1, at: 5_600 * ms), settings: onlyDown).1, [], "roll cap reached")
-    _ = roll.handle(notch(1, at: 5_700 * ms), settings: onlyDown)
-    expectEqual(roll.handle(notch(-1, at: 5_800 * ms), settings: onlyDown).1, [.run(wheelDown)], "unmapped scroll reset the roll")
+    for i in 0..<UInt64(WheelSteps.maxStepsPerRoll) {
+        _ = roll.handle(notch(-1, at: (5_000 + i * 200) * ms), settings: onlyRight)
+    }
+    expectEqual(roll.handle(notch(-1, at: 5_600 * ms), settings: onlyRight).1, [], "roll cap reached")
+    _ = roll.handle(notch(1, at: 5_700 * ms), settings: onlyRight)
+    expectEqual(roll.handle(notch(-1, at: 5_800 * ms), settings: onlyRight).1, [.run(wheelRight)], "unmapped scroll resets roll")
 
-    // Horizontal-only movement and empty events are not wheel steps.
-    expectNoop(state.handle(TapEvent(type: .scrollWheel, horizontal: ScrollAxis(line: 1, fixed: 1, point: 10)), settings: both))
-    // A line event with only a fixed-point delta still has a direction.
-    let subLine = TapEvent(type: .scrollWheel, vertical: ScrollAxis(line: 0, fixed: -0.5, point: 0), nowNanos: 9_000 * ms)
-    expectEqual(state.handle(subLine, settings: both).1, [.run(wheelDown)])
+    // Vertical-only movement is never bound. Mixed-axis events preserve vertical motion.
+    let vertical = ScrollAxis(line: 1, fixed: 1, point: 10)
+    expectNoop(state.handle(TapEvent(type: .scrollWheel, vertical: vertical), settings: both))
+    let mixed = TapEvent(type: .scrollWheel, vertical: vertical,
+                         horizontal: ScrollAxis(line: 1, fixed: 1, point: 10), nowNanos: 8_000 * ms)
+    result = state.handle(mixed, settings: both)
+    expectEqual(result.0, TapDecision(horizontal: .zero), "mixed event retains the original vertical delta")
+    expectEqual(result.1, [.run(wheelLeft)])
+    result = state.handle(mixed, settings: settings(vertical: true, wheel: WheelMap(left: wheelLeft)))
+    expectEqual(result.0, TapDecision(vertical: ScrollAxis(line: -1, fixed: -1, point: -10), horizontal: .zero),
+                "mixed event honors vertical inversion")
+    expectEqual(result.1, []) // Same instant remains subject to step throttling.
+    expectNoop(state.handle(TapEvent(type: .scrollWheel), settings: both))
+    let subLine = TapEvent(type: .scrollWheel, horizontal: ScrollAxis(line: 0, fixed: -0.5, point: 0), nowNanos: 9_000 * ms)
+    expectEqual(state.handle(subLine, settings: both).1, [.run(wheelRight)])
 
-    // High-resolution wheel: point travel accumulates to one step.
     var hires = TapState()
     result = hires.handle(smooth(8, at: 1_000 * ms), settings: both)
-    expectEqual(result.0, TapDecision(pass: false), "partial travel is consumed")
+    expectEqual(result.0, TapDecision(horizontal: .zero), "partial travel is consumed")
     expectEqual(result.1, [])
     _ = hires.handle(smooth(8, at: 1_008 * ms), settings: both)
-    expectEqual(hires.handle(smooth(8, at: 1_016 * ms), settings: both).1, [.run(wheelUp)], "threshold crossed")
-    expectEqual(hires.handle(smooth(-25, at: 1_400 * ms), settings: both).1, [.run(wheelDown)], "downward travel")
-    let fixedOnly = TapEvent(type: .scrollWheel, vertical: ScrollAxis(line: 0, fixed: -30, point: 0), continuous: true, nowNanos: 2_000 * ms)
-    expectEqual(hires.handle(fixedOnly, settings: both).1, [.run(wheelDown)], "continuous fixed-point fallback")
+    expectEqual(hires.handle(smooth(8, at: 1_016 * ms), settings: both).1, [.run(wheelLeft)], "threshold crossed")
+    expectEqual(hires.handle(smooth(-25, at: 1_400 * ms), settings: both).1, [.run(wheelRight)], "rightward travel")
+    let fixedOnly = TapEvent(type: .scrollWheel, horizontal: ScrollAxis(line: 0, fixed: -30, point: 0),
+                             continuous: true, nowNanos: 2_000 * ms)
+    expectEqual(hires.handle(fixedOnly, settings: both).1, [.run(wheelRight)], "continuous fixed-point fallback")
 
-    // Trackpad and Magic Mouse scrolling (scroll or momentum phase) is never bound.
     for (phase, momentum) in [(Int64(1), Int64(0)), (2, 0), (4, 0), (0, 1), (0, 2), (0, 3)] {
         expectNoop(state.handle(smooth(40, at: 10_000 * ms, phase: phase, momentum: momentum), settings: both))
         expectNoop(state.handle(notch(1, at: 10_000 * ms, phase: phase, momentum: momentum), settings: both))
     }
-    // Without wheel bindings nothing changes; synthetic events are untouched.
     expectNoop(state.handle(notch(1, at: 11_000 * ms), settings: settings()))
     var synthetic = notch(1, at: 12_000 * ms)
     synthetic.userData = kSyntheticEventTag

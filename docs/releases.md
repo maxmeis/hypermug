@@ -1,55 +1,91 @@
 # Release process
 
-HyperMug has one Production release workflow, `.github/workflows/release.yml`. Source pushes to protected `main` automatically test the exact pushed commit, select the next patch version, create its immutable `vX.Y.Z` tag, build and sign the app with Developer ID, notarize and staple it, publish a GitHub Release, commit the signed Sparkle feed `appcast.xml` to the `updates` branch, and commit `Casks/hypermug.rb` directly to `main`. There are no release PRs or manual version/tag inputs.
+Every valid Conventional Commit PR merged into `main` receives a production version, including documentation, maintenance and dependency updates. No release PR, manual version bump, canary channel or normal manual publishing step is required. The repository already enforces squash-only merging, PR-title squash commit titles, PR-body commit messages, owner review and the required `ci` check.
 
-## Production publication
+## Pull request CI
 
-App sources, branding, build helpers, the Makefile and release workflow trigger releases. Documentation, website, skills and generated cask-only changes do not. Publication runs are serialized without canceling a running release. The migration baseline is the existing `v0.3.0` release. The new workflow allocates `v0.3.N` from its immutable GitHub run number `N` (first run: `v0.3.1`). Retries reuse that number and require its tag to point to the same source SHA. Failed runs can leave version gaps. A queued older run keeps its lower version even if it executes later, and cannot move the latest release or cask backward.
+`.github/workflows/ci.yml` validates the PR title and runs locked dependency installation, layer/shell/release checks, tests and build validation. Titles are passed as data, never pasted into a shell command. PR jobs have read-only repository access and no production secrets. Native checks use explicit ad-hoc signing on disposable runners, verify bundle identity and signing configuration, and require the Dev update feed to be absent. They do not create a developer certificate or publish a release.
 
-The release job checks out the tested push SHA and uses the repository's `GITHUB_TOKEN` with Contents write to publish tags and releases. It imports the Developer ID certificate into a temporary keychain, builds the Production bundle, requires Apple's notarization result to be Accepted, staples the app and verifies its signature and Gatekeeper assessment. It then packages the final stapled app as `HyperMug-X.Y.Z.zip`. Temporary signing credentials and keychain state are cleaned up on exit.
+## Automatic production releases
 
-The publisher creates a draft with its artifact before publishing. Published tags and artifact bytes are never replaced. The Homebrew cask version, URL and SHA-256 refer to the release archive. Retrying a publication reuses existing published bytes. The cask commit changes only `Casks/hypermug.rb`, fetches current `main` to preserve intervening source changes, and never force-pushes. An older retry cannot move the cask backward.
+`.github/workflows/release.yml` runs on `main` pushes and reconciles missed work on a schedule. Release jobs are serialized with `queue: max` and never cancel a running publisher. Queue order alone is insufficient: the reconciler processes outstanding main source commits oldest first. Two quick merges therefore receive separate versions and archives even if workflow runs start out of order. Generated cask-only publishing commits do not recursively release; ordinary documentation and maintenance merges remain candidates.
 
-## In-app updates
+Scheduled recovery covers merges made with `GITHUB_TOKEN`, whose push events do not start another workflow. Partial releases are repaired before newer versions advance. Each run processes one source; after success it automatically dispatches the next run if work remains. The hourly schedule is a fallback for suppressed events and failed runs. Recovery dispatch has no version input; normal publishing requires only merging a PR.
 
-Production bundles embed Sparkle 2. `helpers/sparkle.sh` downloads one pinned Sparkle release and refuses it unless its SHA-256 matches. The build copies `Sparkle.framework` with `ditto` so its symlinks survive, then re-signs its nested `Installer.xpc`, `Downloader.xpc`, `Autoupdate` and `Updater.app`, and then the framework, from the inside out, with the app's identity and, for releases, Developer ID with hardened runtime and a secure timestamp, before notarization. Release checks fail if any of those parts has the wrong team, no hardened runtime, no timestamp, or a broken framework symlink, both before notarization and again in the downloaded ZIP.
+`release.config.mjs` and `helpers/semantic_plugins.mjs` configure semantic-release's Conventional Commit analysis and changelog generation:
 
-The Info.plist template carries `SUPublicEDKey`, `SUEnableAutomaticChecks`, `SUScheduledCheckInterval` (86400 seconds, so one check a day) and `SUVerifyUpdateBeforeExtraction`. Only the Production variant gets `SUFeedURL`, `https://raw.githubusercontent.com/maxmeis/hypermug/updates/appcast.xml`; CI asserts that Dev builds have no feed. The `autoUpdate` setting turns scheduled checks on or off.
+| Commit | Version change |
+| --- | --- |
+| `fix:` | Patch |
+| `feat:` | Minor |
+| `feat!:` or a `BREAKING CHANGE:` footer | Major |
+| Other valid Conventional Commit types | Patch |
 
-After the publisher downloads and verifies the published ZIP, `sign_update` signs those exact bytes with the `SPARKLE_ED_PRIVATE_KEY` environment secret. The key goes to `sign_update` on standard input and is never printed. `helpers/release_metadata.py appcast` then checks that the signature verifies with the `SUPublicEDKey` inside that ZIP, and writes a one-item feed: `sparkle:version` is the bundle's `CFBundleVersion`, plus `sparkle:shortVersionString`, the enclosure length, `sparkle:edSignature` and the release URL. If the secret is missing, the publisher fails before it touches the release. If the key does not match the app, the release stays a draft. The feed commit uses the same deploy key and GitHub SSH known-hosts setup as the cask commit, retries on races, and never force-pushes. A rerun of the same version is a no-op, and a feed that already lists a newer `sparkle:version` is left alone, so the feed never moves backward.
+The planner uses semantic-release's JavaScript API in dry-run mode against an isolated local Git snapshot for each source. It never lets semantic-release publish live tags before the app is verified. This avoids semantic-release skipping a historical source when remote main has advanced. Each analysis covers its individual source change rather than batching several queued PRs. `CFBundleShortVersionString` gets the semantic version; `CFBundleVersion` gets a deterministic, increasing main-history build number. No production version is manually maintained in source.
 
-The update key was rotated for the first release after 0.3.1 because the original private key was lost. HyperMug 0.3.0 checks downloads against the old key before extracting them, so it cannot accept updates signed with the new key. It reads `appcast-stable.xml` on the `updates` branch, which stays frozen at 0.3.0: the publisher writes only `appcast.xml` and refuses a feed commit that changes any other file. 0.3.0 installs therefore see no update instead of Sparkle's "improperly signed" error. 0.3.1 has no updater. Users of either version run `brew upgrade --cask maxmeis/hypermug/hypermug` once; the cask must be named, because `auto_updates true` makes a bare `brew upgrade` skip it. Never delete or rewrite `appcast-stable.xml`. The new key also lives in the release maintainer's login keychain under the Sparkle account `hypermug-production`; export it with `generate_keys --account hypermug-production -x <file>` only into a private temporary file.
+For migration entries that predate the new helpers, the orchestrator uses trusted workflow build tooling while preserving each historical app source. Provenance identifies both commits. It never substitutes a newer app implementation for the source being released.
+
+The pipeline performs these steps:
+
+1. Select the exact source, install locked tooling and run tests.
+2. Calculate its semantic version and generate changelog notes.
+3. Build with the calculated marketing/build versions; import the Developer ID identity into a temporary Keychain.
+4. Sign nested components and the app, require notarization acceptance, staple, and verify signatures, requirement, entitlements and Gatekeeper assessment.
+5. Package the final bytes and calculate checksums. Only then create or resume a source-bound draft release and version tag.
+6. Download and verify the exact archive, sign it with Sparkle's EdDSA key, validate the appcast and cask, and publish the release with changelog and checksums.
+7. Advance the signed appcast on `updates` and commit the verified cask directly to the existing tap's default branch.
+
+A failed test, build, signing operation or notarization prevents public publication. Credentials and temporary Keychain state are cleaned up on exit.
+
+## Retries and partial publication
+
+A tag/release belongs to one source SHA, version and build number. Retries reuse existing verified archive bytes, never replacing a published archive with a rebuild. Published tags/assets are not moved, overwritten or deleted. Wrong source, build, signature, metadata or digest stops the run.
+
+A public release followed by a failed feed/tap write is a partial release. Automatic reconciliation retries metadata for those exact bytes before advancing. Existing valid pointers remain installable. Feed and cask publication reject rollback and conflicting same-version bytes. Bounded Git retries never force-push `main`; a completed identical retry is a no-op. Repair the failed credential or policy and let reconciliation resume rather than editing an immutable release.
 
 ## Homebrew
 
-Homebrew lives in this repository; no external tap, release service or GitHub App is required. The publisher supports a repository-scoped SSH deploy key for protected-main cask writes; it uses `GITHUB_TOKEN` for cask writes when the branch permits that token. A token-authenticated push does not trigger another push workflow. An SSH push runs ordinary CI, while cask-only updates are excluded from release paths to prevent another release. The cask declares `auto_updates true` because the app updates itself.
+The tap remains this repository's `Casks/hypermug.rb` on `main`, installed as `maxmeis/hypermug/hypermug`. No standalone CLI/Formula is distributed. The generator writes the version, immutable release URL and actual ZIP SHA-256 and validates before publishing. A scratch checkout commits only the permitted cask path; it never mutates the running source checkout. `auto_updates true` remains enabled for Sparkle.
+
+The existing scoped deploy key remains supported as `HOMEBREW_SSH_PRIVATE_KEY`, with its configured protected-main publishing exception. A scoped token is usable where branch policy permits. No broad admin credential or protection weakening is required. Publishing does not open a PR or recursively create another application release. Historical cask-token conflicts may remain for existing installations; there is one active production channel.
+
+## Sparkle
+
+Production embeds the pinned, checksum-verified Sparkle 2 framework. Nested components are signed inside out and verified before/after notarization. The feed stays `https://raw.githubusercontent.com/maxmeis/hypermug/updates/appcast.xml`, with the existing `SUPublicEDKey`. Automatic checks run daily unless the user disables `autoUpdate`; **Check for Updates…** supports checking and installing within the app. Development and local packaging-test builds have no feed.
+
+The publisher sends the private EdDSA key to `sign_update` on stdin and checks the resulting signature against the public key inside the downloaded final archive. The appcast includes the immutable enclosure URL, size, signature, build/marketing versions and minimum OS version. No pointer advances to an unverified download. Updates preserve production identity and entitlement policy; actual permission continuity still needs testing on a granted Mac.
+
+The old `appcast-stable.xml` remains frozen because its original private key was lost. 0.3.0/0.3.1 users need a one-time `brew upgrade --cask maxmeis/hypermug/hypermug`; later releases use the current feed/key. Never delete or rewrite that historical feed or pretend a new key signs for old clients.
 
 ## Repository configuration
 
-Production is active on protected `main`: the `production` environment is restricted to `main` with no required reviewers or wait timer, so source pushes release automatically. Source pull requests retain required CODEOWNERS review. The repository-scoped SSH deploy key is stored as the `production` environment secret `HOMEBREW_SSH_PRIVATE_KEY`; its ruleset exception permits the generated cask commit to bypass pull-request and required-check rules. Force-push and deletion protections are separate and have no deploy-key bypass. Actions uses `GITHUB_TOKEN` with Contents write for tags and releases.
-
-Dependabot PRs, major bumps included, are queued for squash auto-merge by `.github/workflows/dependabot-automerge.yml` and merge once the required `ci` check passes. The merge uses `GITHUB_TOKEN`, so it starts no `push` workflows. A bump to the release or website workflow therefore neither releases nor redeploys. The updated actions first run on the next push that touches those workflows' paths. The workflow approves the PR itself, but only after `dependabot/fetch-metadata` verifies that every commit is a signed Dependabot commit. The owner-review ruleset therefore requires one approval rather than a CODEOWNERS approval; only the owner and this workflow can approve.
-
-For a new repository using this workflow, restrict the `production` environment to `main` and leave reviewers and wait timers unset. Install a repository-scoped write deploy key and save its private key as `HOMEBREW_SSH_PRIVATE_KEY` in that environment. Add a narrow PR and required-check ruleset bypass for that key, while keeping source CODEOWNERS review and force-push/deletion protections in rulesets without the bypass. Inspect all applicable branch protections and rulesets together: `contents: write` and CODEOWNERS alone do not grant direct-push permission. Alternatively, omit the deploy key only when the repository's rules explicitly allow the workflow token to update the cask directly.
-
-## Production credentials
-
-Keep Apple credentials in the `production` environment, accessible only to the release job. No credential is needed for local development or PR tests.
+The `production` environment is already restricted to `main`, with no required release approval or wait timer. Keep credentials there, away from PR jobs:
 
 | Type | Name | Purpose |
 | --- | --- | --- |
-| Secret | `DEVELOPER_ID_P12_BASE64` | Base64-encoded Developer ID certificate and private key |
-| Secret | `DEVELOPER_ID_P12_PASSWORD` | Export password for the certificate |
-| Secret | `APP_STORE_CONNECT_PRIVATE_KEY` | App Store Connect API private key for notarization |
-| Secret | `HOMEBREW_SSH_PRIVATE_KEY` | Repository-scoped key for the cask and appcast commits when branch rules require it |
-| Secret | `SPARKLE_ED_PRIVATE_KEY` | Sparkle EdDSA private key (base64 seed) that signs the appcast; must match `SUPublicEDKey` in `Source/HyperMug/Info.plist` |
-| Variable | `SIGN_ID` | Full Developer ID Application signing identity |
-| Variable | `APPLE_TEAM_ID` | Apple team identifier |
-| Variable | `APP_STORE_CONNECT_KEY_ID` | Notarization API key identifier |
-| Variable | `APP_STORE_CONNECT_ISSUER_ID` | Notarization API issuer identifier |
+| Secret | `DEVELOPER_ID_P12_BASE64` | Developer ID Application certificate and private-key export |
+| Secret | `DEVELOPER_ID_P12_PASSWORD` | Password protecting that PKCS#12 export |
+| Secret | `APP_STORE_CONNECT_PRIVATE_KEY` | Notarization API private key |
+| Secret | `HOMEBREW_SSH_PRIVATE_KEY` | Existing scoped deploy key for tap/feed writes |
+| Secret | `SPARKLE_ED_PRIVATE_KEY` | Sparkle key matching the embedded public key |
+| Variable | `SIGN_ID` | Full Developer ID Application identity |
+| Variable | `APPLE_TEAM_ID` | Expected signing team |
+| Variable | `APP_STORE_CONNECT_KEY_ID` | API key identifier |
+| Variable | `APP_STORE_CONNECT_ISSUER_ID` | API issuer identifier |
 
-The first migrated production release, `v0.3.1`, has been published and its cask update verified. Retire old release-bot and external-tap credentials only after every dependent project has completed a real production publication and Homebrew update. Existing historical releases remain unchanged.
+An Apple account holder creates a Developer ID Application certificate, exports its certificate/private-key pair as password-protected PKCS#12, and stores the base64 export and password separately as environment secrets. Create an App Store Connect API key with notarization access; store its private key separately from its identifiers. Never commit or print either private key. Developers use only their independent local identities.
+
+Retain owner review, the required `ci` check, squash history, no-force-push/deletion rules and the narrow publishing exception. Inspect all applicable rulesets before changing credentials. `GITHUB_TOKEN` needs Contents write for tags/releases; tap/feed credentials must be repository-scoped. Signing runs only on trusted main code in the protected environment.
 
 ## Validation
 
-`make test-release` uses isolated fixtures to test version selection, publication retries, signing and notarization errors, appcast generation and signature checks, feed reruns and rollback protection, that only `appcast.xml` is ever written, and the missing-secret failure. `make check` also runs Core coverage, native subprocess checks, compilation, workflow helper and content checks. These local checks do not prove Developer ID credentials, Apple's notarization service, protected-branch publication or a clean-Mac install; verify those through an actual production workflow before announcing the migration complete. The same applies to a real Sparkle update from one release to the next.
+```sh
+make test-release
+make test-ci
+npm run test:release-queue
+make check
+```
+
+Tests cover version rules, rapid merges, backlog ordering, partial retries, source/tag identity, signing/notarization failures, checksums, EdDSA validation and feed/cask boundaries. See [Signing and permission persistence](signing.md) for setup, diagnostics and explicit TCC limits. Fixtures do not prove live Apple credentials, GitHub publication, Homebrew installation or a real Sparkle update; verify and record those after a production run.
+
+Primary references: [semantic-release API](https://semantic-release.gitbook.io/semantic-release/developer-guide/js-api), [commit analysis](https://github.com/semantic-release/commit-analyzer), [GitHub concurrency](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency), [token trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow), [Apple notarization](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution), and [Sparkle publishing](https://sparkle-project.org/documentation/publishing/).

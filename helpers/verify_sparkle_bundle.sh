@@ -18,8 +18,21 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 version="$framework/Versions/B"
 for code in "$version/XPCServices/Installer.xpc" "$version/XPCServices/Downloader.xpc" "$version/Autoupdate" "$version/Updater.app" "$framework"; do
+  codesign --verify --strict --verbose=2 "$code"
+  codesign --verify --strict -R="anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = $team" "$code"
   codesign -dv --verbose=4 "$code" 2> "$work/signature.txt"
   grep -Fqx "TeamIdentifier=$team" "$work/signature.txt" || { echo "Unexpected signing team: $code" >&2; exit 1; }
   grep -Eq 'flags=.*\(runtime\)' "$work/signature.txt" || { echo "Missing hardened runtime: $code" >&2; exit 1; }
   grep -Eq '^Timestamp=' "$work/signature.txt" || { echo "Missing secure timestamp: $code" >&2; exit 1; }
+  codesign -d --entitlements - --xml "$code" > "$work/entitlements.plist"
+  if [[ -s "$work/entitlements.plist" ]]; then
+    python3 - "$work/entitlements.plist" <<'PY'
+import plistlib
+import sys
+with open(sys.argv[1], 'rb') as stream:
+    entitlements = plistlib.load(stream)
+if entitlements.get('com.apple.security.get-task-allow') is True:
+    raise SystemExit('Sparkle component has a development-only get-task-allow entitlement')
+PY
+  fi
 done

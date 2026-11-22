@@ -14,31 +14,10 @@ from xml.sax.saxutils import escape
 import ed25519
 
 SEMVER = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
-SHA = re.compile(r"^[0-9a-f]{40}$")
 REPOSITORY = "maxmeis/hypermug"
 FEED_URL = f"https://raw.githubusercontent.com/{REPOSITORY}/updates/appcast.xml"
 SPARKLE = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 BUNDLE_VERSION = re.compile(r"^(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*)){0,2}$")
-
-
-def next_version(tags, source_sha, run_number):
-    """Reserve v0.3.N for workflow run N, regardless of queue order.
-
-    The migration starts after the already-published v0.3.0 release. GitHub
-    keeps run_number stable across attempts, so retries retain one identity.
-    """
-    if not SHA.fullmatch(source_sha):
-        raise ValueError("invalid source SHA")
-    if not isinstance(run_number, int) or run_number < 1:
-        raise ValueError("run number must be a positive integer")
-    version = f"0.3.{run_number}"
-    target = "v" + version
-    for tag, sha in tags:
-        if tag == target:
-            if sha != source_sha:
-                raise ValueError(f"{target} already belongs to another source commit")
-            return version, True
-    return version, False
 
 
 def render_cask(version, digest, repository=REPOSITORY):
@@ -50,7 +29,7 @@ def render_cask(version, digest, repository=REPOSITORY):
   version "{version}"
   sha256 "{digest}"
 
-  url "https://github.com/{repository}/releases/download/v{version}/HyperMug-{version}.zip"
+  url "https://github.com/{repository}/releases/download/v#{{version}}/HyperMug-#{{version}}.zip"
   name "HyperMug"
   desc "Caps Lock remapping, caffeine, and mouse controls for macOS"
   homepage "https://github.com/{repository}"
@@ -60,7 +39,7 @@ def render_cask(version, digest, repository=REPOSITORY):
   end
 
   auto_updates true
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
   depends_on arch: :arm64
   conflicts_with cask: "hypermug@canary"
   conflicts_with cask: "hypermug@nightly"
@@ -75,7 +54,7 @@ def archive_info(archive):
         return plistlib.loads(bundle.read("HyperMug.app/Contents/Info.plist"))
 
 
-def render_appcast(version, archive, signature, repository=REPOSITORY):
+def render_appcast(version, archive, signature, repository=REPOSITORY, expected_build=None):
     """One-item feed for the exact published archive, checked against its own public key."""
     if not SEMVER.fullmatch("v" + version) or repository != REPOSITORY:
         raise ValueError("invalid version or repository")
@@ -83,6 +62,8 @@ def render_appcast(version, archive, signature, repository=REPOSITORY):
     build = str(info.get("CFBundleVersion", ""))
     if info.get("CFBundleShortVersionString") != version or not BUNDLE_VERSION.fullmatch(build):
         raise ValueError("archive version does not match the release")
+    if expected_build is not None and build != str(expected_build):
+        raise ValueError("archive build number does not match the release")
     if info.get("SUFeedURL") != FEED_URL:
         raise ValueError("archive does not read the production appcast")
     try:
@@ -136,10 +117,6 @@ def feed_decision(current, candidate):
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
-    version = sub.add_parser("version")
-    version.add_argument("--tags", type=Path, required=True)
-    version.add_argument("--source-sha", required=True)
-    version.add_argument("--run-number", type=int, required=True)
     cask = sub.add_parser("cask")
     cask.add_argument("--version", required=True)
     cask.add_argument("--zip", type=Path, required=True)
@@ -148,6 +125,7 @@ def main():
     appcast.add_argument("--version", required=True)
     appcast.add_argument("--zip", type=Path, required=True)
     appcast.add_argument("--signature", required=True)
+    appcast.add_argument("--build-number", required=True)
     appcast.add_argument("--output", type=Path, required=True)
     decision = sub.add_parser("feed-decision")
     decision.add_argument("--current", type=Path, required=True)
@@ -161,16 +139,10 @@ def main():
 
 def run(args):
     if args.command == "appcast":
-        args.output.write_text(render_appcast(args.version, args.zip, args.signature))
+        args.output.write_text(render_appcast(args.version, args.zip, args.signature, expected_build=args.build_number))
     elif args.command == "feed-decision":
         current = args.current.read_text() if args.current.exists() else None
         print(feed_decision(current, args.candidate.read_text()))
-    elif args.command == "version":
-        tags = []
-        for line in args.tags.read_text().splitlines():
-            tag, sha = line.split(" ", 1)
-            tags.append((tag, sha))
-        print(next_version(tags, args.source_sha, args.run_number)[0])
     else:
         digest = hashlib.sha256(args.zip.read_bytes()).hexdigest()
         args.output.parent.mkdir(parents=True, exist_ok=True)

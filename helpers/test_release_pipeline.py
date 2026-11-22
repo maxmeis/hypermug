@@ -1,7 +1,9 @@
 """Production version selection and artifact metadata regression tests."""
 import base64
 import hashlib
+import os
 import plistlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -10,11 +12,10 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree
 import ed25519
-from release_metadata import FEED_URL, SPARKLE, feed_decision, next_version, render_appcast, render_cask
+from release_metadata import FEED_URL, SPARKLE, feed_decision, render_appcast, render_cask
 
 ROOT = Path(__file__).resolve().parents[1]
 SHA = 'a' * 40
-OTHER = 'b' * 40
 SEED = bytes(range(32))
 
 
@@ -36,23 +37,6 @@ def sparkle_signature(path, seed=SEED):
 
 
 class ReleasePipelineTests(unittest.TestCase):
-    def test_version_is_reserved_by_run_number_even_when_queue_order_reverses(self):
-        tags = [('v0.3.0', OTHER), ('v0.3.2', OTHER),
-                ('v0.0.0-canary.200', OTHER)]
-        self.assertEqual(next_version(tags, SHA, 1), ('0.3.1', False))
-        self.assertEqual(next_version(tags, SHA, 3), ('0.3.3', False))
-        self.assertEqual(next_version([], SHA, 1), ('0.3.1', False))
-
-    def test_rerun_uses_the_version_of_the_same_source_commit(self):
-        tags = [('v0.3.3', SHA), ('v0.3.4', OTHER)]
-        self.assertEqual(next_version(tags, SHA, 3), ('0.3.3', True))
-        with self.assertRaises(ValueError):
-            next_version([('v0.3.3', OTHER)], SHA, 3)
-        with self.assertRaises(ValueError):
-            next_version([], 'not a sha', 1)
-        with self.assertRaises(ValueError):
-            next_version([], SHA, 0)
-
     def test_cask_uses_exact_archive_digest_and_declares_in_app_updates(self):
         with tempfile.TemporaryDirectory() as folder:
             archive = Path(folder) / 'HyperMug-1.2.3.zip'
@@ -68,6 +52,35 @@ class ReleasePipelineTests(unittest.TestCase):
             self.assertIn('  auto_updates true\n', cask.read_text())
             self.assertIn('conflicts_with cask: "hypermug@canary"', cask.read_text())
 
+    @unittest.skipUnless(shutil.which('brew'), 'Homebrew is unavailable')
+    def test_generated_cask_loads_in_homebrew_and_checks_resolved_artifact(self):
+        with tempfile.TemporaryDirectory() as folder:
+            archive = Path(folder) / 'HyperMug-1.2.3.zip'
+            archive.write_bytes(b'immutable release bytes')
+            digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+            cask = Path(folder) / 'hypermug.rb'
+            cask.write_text(render_cask('1.2.3', digest))
+            command = [str(ROOT / 'helpers/validate-cask.sh'), str(cask), '1.2.3', digest]
+            valid = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(valid.returncode, 0, valid.stderr)
+            legacy_command = [
+                'brew', 'ruby', '-e',
+                'require "cask/cask_loader"; '
+                'Cask::CaskLoader.singleton_class.send(:remove_method, :from_content) '
+                'if Cask::CaskLoader.respond_to?(:from_content); '
+                'load ARGV.shift',
+                str(ROOT / 'helpers/validate_cask.rb'), str(cask), '1.2.3', digest,
+            ]
+            env = dict(os.environ,
+                       HOMEBREW_CACHE=str(Path(folder) / 'brew-cache'),
+                       HOMEBREW_TEMP=str(Path(folder) / 'brew-temp'),
+                       HOMEBREW_NO_AUTO_UPDATE='1', HOMEBREW_NO_INSTALL_FROM_API='1')
+            legacy = subprocess.run(legacy_command, env=env, capture_output=True, text=True)
+            self.assertEqual(legacy.returncode, 0, legacy.stderr)
+            wrong_digest = subprocess.run(command[:-1] + ['0' * 64], capture_output=True, text=True)
+            self.assertNotEqual(wrong_digest.returncode, 0)
+            self.assertIn('unexpected Cask digest', wrong_digest.stderr)
+
     def test_malformed_version_cannot_enter_cask_or_release(self):
         for bad in ('1.2', '01.2.3', '1.2.3-rc.1', '1.2.3;echo bad'):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
@@ -79,7 +92,7 @@ class ReleasePipelineTests(unittest.TestCase):
             signature = sparkle_signature(archive)
             output = Path(folder) / 'appcast.xml'
             result = subprocess.run([sys.executable, str(ROOT / 'helpers/release_metadata.py'), 'appcast',
-                '--version', '1.2.3', '--zip', str(archive), '--signature', signature, '--output', str(output)],
+                '--version', '1.2.3', '--build-number', '1.2.3', '--zip', str(archive), '--signature', signature, '--output', str(output)],
                 capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             item = ElementTree.fromstring(output.read_text()).find('./channel/item')
@@ -98,6 +111,8 @@ class ReleasePipelineTests(unittest.TestCase):
             feed = render_appcast('1.2.3', archive, sparkle_signature(archive))
             self.assertIn('<sparkle:version>42</sparkle:version>', feed)
             self.assertIn('<sparkle:shortVersionString>1.2.3</sparkle:shortVersionString>', feed)
+            with self.assertRaisesRegex(ValueError, 'build number'):
+                render_appcast('1.2.3', archive, sparkle_signature(archive), expected_build='43')
 
     def test_appcast_rejects_signatures_the_installed_app_cannot_verify(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -151,7 +166,7 @@ class ReleasePipelineTests(unittest.TestCase):
         self.assertFalse(ed25519.verify(public, b'x', signature))
 
     def test_release_requires_credentials_before_build(self):
-        env = {'VERSION': '1.2.3', 'GITHUB_SHA': SHA,
+        env = {'VERSION': '1.2.3', 'BUILD_NUMBER': '42', 'GITHUB_SHA': SHA,
                'GITHUB_REPOSITORY': 'maxmeis/hypermug'}
         # A missing Developer ID is an early failure, before any app build.
         import os
@@ -176,6 +191,10 @@ class SignedReleaseIntegrationTests(unittest.TestCase):
         helpers.mkdir(parents=True)
         for name in ('release.sh', 'release_metadata.py', 'ed25519.py', 'notary_auth.sh'):
             shutil.copy2(ROOT / 'helpers' / name, helpers / name)
+        (helpers / 'verify_production_signature.sh').write_text('#!/usr/bin/env bash\nexit 0\n')
+        (helpers / 'verify_production_signature.sh').chmod(0o755)
+        (helpers / 'verify_release_archive.sh').write_text('#!/usr/bin/env bash\nexit 0\n')
+        (helpers / 'verify_release_archive.sh').chmod(0o755)
         (helpers / 'check-bundle-schema.py').write_text('pass\n')
         sparkle = helpers / 'verify_sparkle_bundle.sh'
         sparkle.write_text('#!/usr/bin/env bash\necho "verify_sparkle_bundle $*" >> "$MOCK_LOG"\n')
@@ -203,7 +222,8 @@ printf plist > build/HyperMug.app/Contents/Info.plist
 ''',
             'plutil': '''
 case "$2" in
-  CFBundleShortVersionString|CFBundleVersion) echo 1.2.3;;
+  CFBundleShortVersionString) echo 1.2.3;;
+  CFBundleVersion) echo 42;;
   CFBundleIdentifier) echo com.maxmeis.hypermug;;
   *) exit 1;;
 esac
@@ -223,7 +243,7 @@ fi
             path.chmod(0o755)
         self.env = os.environ.copy()
         self.env.update(PATH=f'{self.bin}:{os.environ["PATH"]}', MOCK_LOG=str(self.log),
-                        VERSION='1.2.3', GITHUB_SHA=self.sha, GITHUB_REPOSITORY='maxmeis/hypermug',
+                        VERSION='1.2.3', BUILD_NUMBER='42', GITHUB_SHA=self.sha, GITHUB_REPOSITORY='maxmeis/hypermug',
                         SIGN_ID='Developer ID Application: Example', DEVELOPER_ID_P12_BASE64='YQ==',
                         DEVELOPER_ID_P12_PASSWORD='fixture', APPLE_TEAM_ID='TEAM123',
                         APP_STORE_CONNECT_PRIVATE_KEY='fixture-key', APP_STORE_CONNECT_KEY_ID='KEY123',

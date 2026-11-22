@@ -4,7 +4,7 @@ import CoreGraphics
 // MARK: - Model
 
 public enum CapsMode: String, Equatable, CaseIterable {
-    case `default`, meh, hyper
+    case `default`, meh, threeMod, hyper
     public var isModifier: Bool { self != .default }
 }
 
@@ -95,36 +95,36 @@ public struct InvertScroll: Equatable {
 }
 
 public enum WheelDirection: String, CaseIterable, Equatable {
-    case up, down
+    case left, right
 }
 
-/// Actions for physical vertical wheel steps; an unmapped direction keeps normal scrolling.
+/// Actions for physical horizontal wheel steps; an unmapped direction keeps normal scrolling.
 public struct WheelMap: Equatable {
-    public var up: ButtonAction?
-    public var down: ButtonAction?
+    public var left: ButtonAction?
+    public var right: ButtonAction?
 
-    public init(up: ButtonAction? = nil, down: ButtonAction? = nil) {
-        self.up = up
-        self.down = down
+    public init(left: ButtonAction? = nil, right: ButtonAction? = nil) {
+        self.left = left
+        self.right = right
     }
 
-    public var isEmpty: Bool { up == nil && down == nil }
+    public var isEmpty: Bool { left == nil && right == nil }
 
     public func action(for direction: WheelDirection) -> ButtonAction? {
-        direction == .up ? up : down
+        direction == .left ? left : right
     }
 }
 
 public struct MouseConfig: Equatable {
     public var invertScroll: InvertScroll
     public var buttons: ButtonMap
-    public var verticalWheel: WheelMap
+    public var horizontalWheel: WheelMap
 
     public init(invertScroll: InvertScroll = InvertScroll(), buttons: ButtonMap = ButtonMap(),
-                verticalWheel: WheelMap = WheelMap()) {
+                horizontalWheel: WheelMap = WheelMap()) {
         self.invertScroll = invertScroll
         self.buttons = buttons
-        self.verticalWheel = verticalWheel
+        self.horizontalWheel = horizontalWheel
     }
 }
 
@@ -150,7 +150,7 @@ public struct AppConfig: Equatable {
     public var mouse: MouseConfig
     public var trackpad: TrackpadConfig
 
-    public init(capsLock: CapsMode = .meh, caffeineOnLaunch: Bool = true, launchAtLogin: Bool = false,
+    public init(capsLock: CapsMode = .threeMod, caffeineOnLaunch: Bool = true, launchAtLogin: Bool = false,
                 autoUpdate: Bool = true,
                 mouse: MouseConfig = MouseConfig(), trackpad: TrackpadConfig = TrackpadConfig(),
                 helpers: [String: String] = [:], shellTimeoutSeconds: Double = 10) {
@@ -174,8 +174,8 @@ public struct AppConfig: Equatable {
         result.mouse.buttons.back = resolve(mouse.buttons.back)
         result.mouse.buttons.forward = resolve(mouse.buttons.forward)
         result.mouse.buttons.thumb = resolve(mouse.buttons.thumb)
-        result.mouse.verticalWheel.up = resolve(mouse.verticalWheel.up)
-        result.mouse.verticalWheel.down = resolve(mouse.verticalWheel.down)
+        result.mouse.horizontalWheel.left = resolve(mouse.horizontalWheel.left)
+        result.mouse.horizontalWheel.right = resolve(mouse.horizontalWheel.right)
         for direction in SwipeDirection.allCases {
             switch direction {
             case .up:
@@ -379,15 +379,15 @@ extension WheelMap: Codable {
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: AnyKey.self)
-        noteUnknownKeys(c, known: ["up", "down"], in: decoder)
-        up = try decodeAction(c, "up", in: decoder)
-        down = try decodeAction(c, "down", in: decoder)
+        noteUnknownKeys(c, known: ["left", "right"], in: decoder)
+        left = try decodeAction(c, "left", in: decoder)
+        right = try decodeAction(c, "right", in: decoder)
     }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: AnyKey.self)
-        if up != nil || encoder.includeEmptyKeys { try c.encode(ActionFields(action: up), forKey: AnyKey("up")) }
-        if down != nil || encoder.includeEmptyKeys { try c.encode(ActionFields(action: down), forKey: AnyKey("down")) }
+        if left != nil || encoder.includeEmptyKeys { try c.encode(ActionFields(action: left), forKey: AnyKey("left")) }
+        if right != nil || encoder.includeEmptyKeys { try c.encode(ActionFields(action: right), forKey: AnyKey("right")) }
     }
 }
 
@@ -411,10 +411,10 @@ extension MouseConfig: Codable {
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: AnyKey.self)
-        noteUnknownKeys(c, known: ["invertScroll", "buttons", "verticalWheel"], in: decoder)
+        noteUnknownKeys(c, known: ["invertScroll", "buttons", "horizontalWheel"], in: decoder)
         invertScroll = try c.decodeIfPresent(InvertScroll.self, forKey: AnyKey("invertScroll")) ?? InvertScroll()
         buttons = try c.decodeIfPresent(ButtonMap.self, forKey: AnyKey("buttons")) ?? ButtonMap()
-        verticalWheel = try c.decodeIfPresent(WheelMap.self, forKey: AnyKey("verticalWheel")) ?? WheelMap()
+        horizontalWheel = try c.decodeIfPresent(WheelMap.self, forKey: AnyKey("horizontalWheel")) ?? WheelMap()
     }
 
     /// Show the button and wheel slots when initializing a configuration file.
@@ -422,7 +422,7 @@ extension MouseConfig: Codable {
         var c = encoder.container(keyedBy: AnyKey.self)
         try c.encode(invertScroll, forKey: AnyKey("invertScroll"))
         if !buttons.isEmpty || encoder.includeEmptyKeys { try c.encode(buttons, forKey: AnyKey("buttons")) }
-        if !verticalWheel.isEmpty || encoder.includeEmptyKeys { try c.encode(verticalWheel, forKey: AnyKey("verticalWheel")) }
+        if !horizontalWheel.isEmpty || encoder.includeEmptyKeys { try c.encode(horizontalWheel, forKey: AnyKey("horizontalWheel")) }
     }
 }
 
@@ -444,7 +444,7 @@ extension AppConfig: Codable {
         }
         if let raw = try c.decodeIfPresent(String.self, forKey: AnyKey("capsLock")) {
             guard let mode = CapsMode(rawValue: raw) else {
-                throw ConfigError(reason: "capsLock must be \"default\", \"meh\" or \"hyper\" (got \"\(raw)\")")
+                throw ConfigError(reason: "capsLock must be \"default\", \"meh\", \"threeMod\" or \"hyper\" (got \"\(raw)\")")
             }
             capsLock = mode
         }
@@ -456,7 +456,7 @@ extension AppConfig: Codable {
         let references: [(String, ButtonAction?)] = [
             ("mouse.buttons.back", mouse.buttons.back), ("mouse.buttons.forward", mouse.buttons.forward),
             ("mouse.buttons.thumb", mouse.buttons.thumb),
-            ("mouse.verticalWheel.up", mouse.verticalWheel.up), ("mouse.verticalWheel.down", mouse.verticalWheel.down)
+            ("mouse.horizontalWheel.left", mouse.horizontalWheel.left), ("mouse.horizontalWheel.right", mouse.horizontalWheel.right)
         ] + [3, 4].flatMap { fingers in SwipeDirection.allCases.map { direction in
             ("trackpad.\(fingers == 3 ? "threeFingerSwipe" : "fourFingerSwipe").\(direction.rawValue)",
              trackpad.action(fingers: fingers, direction: direction))

@@ -14,6 +14,8 @@
 	<string>HyperMug.icns</string>
 	<key>HyperMugReleaseChannel</key>
 	<string>local</string>
+	<key>HyperMugPermissionDiagnosticsVersion</key>
+	<integer>1</integer>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

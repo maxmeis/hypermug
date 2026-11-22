@@ -35,21 +35,21 @@
       </div>
       <div class="hero-stage" aria-label="Illustration of Caps Lock adding shortcut modifiers">
         <div class="stage-top"><span class="three-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>YOUR KEYBOARD, WITH MORE TO SAY</span><img class="stage-logo" src="./logo-180.png" width="30" height="30" alt=""></div>
-        <div class="key-scene"><div class="key-main"><span>hold</span><strong>caps<br>lock</strong></div><div class="connector" aria-hidden="true"></div><div class="result"><span>becomes</span><strong>⌃ ⌥ ⌘</strong><small>Meh modifiers</small></div></div>
-        <div class="stage-bottom"><span>Tap instead</span><strong>esc</strong><span class="stage-note">Illustration of the default Meh mode</span></div>
+        <div class="key-scene"><div class="key-main"><span>hold</span><strong>caps<br>lock</strong></div><div class="connector" aria-hidden="true"></div><div class="result"><span>becomes</span><strong>⌃ ⌥ ⌘</strong><small>Three Mod</small></div></div>
+        <div class="stage-bottom"><span>Tap instead</span><strong>esc</strong><span class="stage-note">Illustration of the default Three Mod mode</span></div>
       </div>
     </section>
     <section class="story" id="how-it-works" aria-labelledby="story-title"><div class="wrap">
       <div class="section-heading"><h2 id="story-title">One mug. Four useful habits.</h2><p>The things you reach for all day, made easier to reach.</p></div>
       <div class="feature-list">
-        <article class="feature"><div class="feature-symbol keyboard-symbol" aria-hidden="true">⌃⌥⌘</div><div><h3>Caps Lock earns its place</h3><p>Hold Caps Lock for Meh (Control, Option, Command), or choose Hyper to add Shift. A quick tap sends Escape. Your shortcuts stay yours.</p></div></article>
+        <article class="feature"><div class="feature-symbol keyboard-symbol" aria-hidden="true">⌃⌥⌘</div><div><h3>Caps Lock earns its place</h3><p>Hold Caps Lock for Three Mod (Control, Option, Command). You can also choose Meh (Control, Option, Shift) or Hyper (all four). A quick tap sends Escape.</p></div></article>
         <article class="feature"><div class="feature-symbol mug-symbol" aria-hidden="true">☕</div><div><h3>Keep the screen awake</h3><p>Click the menu bar mug, then use the checked Stay Awake item for this session. Its filled or empty icon shows the current state; the next launch uses your saved preference.</p></div></article>
         <article class="feature"><div class="feature-symbol mouse-symbol" aria-hidden="true">↖</div><div><h3>Give buttons a job</h3><p>Map Back, Forward, and the Logitech MX Master 3S thumb button to a shortcut, shell command, or shared helper. Invert mouse wheel scrolling when you want to.</p></div></article>
         <article class="feature"><div class="feature-symbol swipe-symbol" aria-hidden="true">↔</div><div><h3>Swipe where you mean to go</h3><p>Assign three- and four-finger swipes in any direction. Named helpers let multiple bindings share one command. A one-time macOS setup disables conflicting system gestures before you use them.</p></div></article>
       </div>
     </div></section>
     <section class="detail wrap" aria-labelledby="detail-title"><div class="detail-copy"><h2 id="detail-title">Quiet in the menu bar. Configured in TOML.</h2><p>Left-click or right-click the mug to open its menu. The checked Stay Awake item controls this session. Settings… (⌘,) opens the TOML editor in the same native window as overview, permissions and activity. Save edits to <code>~/.config/hypermug.toml</code> directly in HyperMug. Its schema lives inside the signed app. Saved edits reload automatically; native notifications report invalid settings and failed or timed-out shell actions.</p><a class="text-link" href="https://github.com/maxmeis/hypermug/blob/main/docs/configuration.md">Read configuration guide <span aria-hidden="true">↗</span></a></div><div class="interface" aria-label="Illustration of the HyperMug menu and TOML settings"><div class="mac-bar"><span>Finder&nbsp;&nbsp; File&nbsp;&nbsp; Edit</span><span>☕ &nbsp;◉ &nbsp;⌁</span></div><div class="interface-body"><div class="menu-card"><span class="menu-title">HyperMug</span><span>✓ Stay Awake</span><span>Settings… <kbd>⌘,</kbd></span><span>Doctor…</span><span>Check for Updates…</span><hr><span>Quit HyperMug</span></div><div class="code-card"><div class="code-title">hypermug.toml</div><pre><code>autoUpdate = true
-capsLock = "meh"
+capsLock = "threeMod"
 caffeineOnLaunch = true
 
 [mouse.buttons]

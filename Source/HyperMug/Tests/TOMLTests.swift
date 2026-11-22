@@ -97,7 +97,7 @@ func tomlTests() {
     serializerTests()
     bridgeTests()
     schemaLinkTests()
-    verticalWheelTests()
+    horizontalWheelTests()
 }
 
 // MARK: - Examples
@@ -107,6 +107,7 @@ private func exampleTests() {
     let decoded = try? validateConfigTOML(Data(issueExampleTOML.utf8)).get()
     let next = "/opt/homebrew/bin/aerospace workspace --no-stdin --wrap-around next"
     expectEqual(decoded?.config.capsLock, .meh)
+    expectEqual(try? validateConfigTOML(Data("capsLock = \"threeMod\"\n".utf8)).get().config.capsLock, .threeMod)
     expectEqual(decoded?.config.launchAtLogin, false)
     expectEqual(decoded?.config.helpers["nextWorkspace"], next)
     expectEqual(decoded?.config.mouse.buttons.back, .helper("previousWorkspace"))
@@ -121,13 +122,21 @@ private func exampleTests() {
     expectEqual(validateConfigTOML(Data(stringForm.utf8)).failureReason, "mouse.buttons.thumb.shortcut: expected array",
                 "string shortcuts are rejected")
 
-    // Issue #39, from the docs example file, is the configuration the owner posted.
+    // The documented setup keeps the owner's workspace bindings and adds the horizontal wheel.
     let docsExample = try? Data(contentsOf: URL(fileURLWithPath: "docs/examples/aerospace.toml"))
     expect(docsExample != nil, "docs/examples/aerospace.toml exists (tests run from the repository root)")
     let fromDocs = docsExample.flatMap { try? validateConfigTOML($0).get() }
     let fromIssue = try? validateConfigTOML(Data(issue39TOML.utf8)).get()
     expect(fromIssue != nil, "the #39 configuration is valid")
-    expectEqual(fromDocs, fromIssue, "the #39 TOML example is the owner's configuration")
+    expectEqual(fromDocs?.config.mouse.buttons, fromIssue?.config.mouse.buttons)
+    expectEqual(fromDocs?.config.trackpad.threeFingerSwipe, fromIssue?.config.trackpad.threeFingerSwipe)
+    expectEqual(fromDocs?.config.mouse.horizontalWheel,
+                WheelMap(left: .helper("aerospaceWindowNext"), right: .helper("aerospaceWindowPrev")))
+    expectEqual(fromDocs?.config.trackpad.fourFingerSwipe.left, .helper("aerospaceWindowNext"))
+    expectEqual(fromDocs?.config.trackpad.fourFingerSwipe.right, .helper("aerospaceWindowPrev"))
+    expectEqual(fromDocs?.config.resolvedActions().mouse.horizontalWheel.left,
+                .shell("/opt/homebrew/bin/aerospace focus --wrap-around dfs-next"))
+    expectEqual(fromDocs?.unknownKeys, [])
     expectEqual(fromDocs?.config.mouse.buttons.thumb, nil, "the thumb slot is unassigned")
 
     // Empty and comment-only documents mean all defaults.
@@ -367,10 +376,11 @@ private func serializerTests() {
     let defaults = encodeConfigTOML(.newFileDefaults, schemaURL: schemaURL, includeEmptyKeys: true)
     expectEqual(try? validateConfigTOML(defaults).get().config, .newFileDefaults)
     let defaultText = text(defaults)
+    expect(defaultText.contains("\ncapsLock = \"threeMod\"\n"), "new files select Three Mod")
     expect(defaultText.hasPrefix("#:schema \(schemaURL.absoluteString)\n\"$schema\" = \"\(schemaURL.absoluteString)\"\n\nautoUpdate = "), defaultText)
     expect(defaultText.contains("\nhelpers = {}\n") && defaultText.contains("\nthumb = {}\n") && defaultText.contains("\nshellTimeoutSeconds = 10\n")
            && defaultText.contains("\n[trackpad.threeFingerSwipe]\ndown = {}\n"), defaultText)
-    for config in [AppConfig(), .newFileDefaults, AppConfig(shellTimeoutSeconds: 2.5),
+    for config in [AppConfig(), .newFileDefaults, AppConfig(capsLock: .meh), AppConfig(capsLock: .hyper), AppConfig(shellTimeoutSeconds: 2.5),
                    AppConfig(mouse: MouseConfig(buttons: ButtonMap(thumb: .shortcut(try! parseShortcut(["meh", "\\"]).get()))))] {
         let data = encodeConfigTOML(config)
         expectEqual(try? validateConfigTOML(data).get().config, config, "TOML encoding round-trips \(text(data))")
@@ -425,26 +435,26 @@ private func schemaLinkTests() {
     }
 }
 
-// MARK: - mouse.verticalWheel
+// MARK: - mouse.horizontalWheel
 
 private let wheelTOML = """
 [helpers]
 nextWindow = "/opt/homebrew/bin/aerospace focus --boundaries-action wrap-around-the-workspace right"
 previousWindow = "/opt/homebrew/bin/aerospace focus --boundaries-action wrap-around-the-workspace left"
 
-[mouse.verticalWheel]
-down.helper = "nextWindow"
-up.helper = "previousWindow"
+[mouse.horizontalWheel]
+left.helper = "nextWindow"
+right.helper = "previousWindow"
 
 """
 
-private func verticalWheelTests() {
+private func horizontalWheelTests() {
     // Parses, validates and resolves like any other mapping.
     let decoded = try? validateConfigTOML(Data(wheelTOML.utf8)).get()
-    expectEqual(decoded?.config.mouse.verticalWheel.up, .helper("previousWindow"))
-    expectEqual(decoded?.config.mouse.verticalWheel.down, .helper("nextWindow"))
+    expectEqual(decoded?.config.mouse.horizontalWheel.left, .helper("nextWindow"))
+    expectEqual(decoded?.config.mouse.horizontalWheel.right, .helper("previousWindow"))
     expectEqual(decoded?.unknownKeys, [])
-    expectEqual(decoded?.config.resolvedActions().mouse.verticalWheel.down,
+    expectEqual(decoded?.config.resolvedActions().mouse.horizontalWheel.left,
                 .shell("/opt/homebrew/bin/aerospace focus --boundaries-action wrap-around-the-workspace right"))
     // The serializer writes exactly this canonical TOML.
     expectEqual(text(renderConfigTOML(parsed(wheelTOML))), wheelTOML, "canonical output")
@@ -453,15 +463,15 @@ private func verticalWheelTests() {
     expectEqual(try? validateConfigTOML(encoded).get().config, decoded?.config)
     expectEqual(text(renderConfigTOML(parsed(text(encoded)))), text(encoded), "stable")
     // The schema covers the slots: unknown keys and bad values fail and name the setting.
-    for toml in ["mouse.verticalWheel.left.helper = \"x\"", "mouse.verticalWheel.up.helper = \"missing\"",
-                 "mouse.verticalWheel.up = { shell = \"a\", helper = \"b\" }"] {
+    for toml in ["mouse.horizontalWheel.up.helper = \"x\"", "mouse.horizontalWheel.left.helper = \"missing\"",
+                 "mouse.horizontalWheel.left = { shell = \"a\", helper = \"b\" }"] {
         let reason = validateConfigTOML(Data(toml.utf8)).failureReason
-        expect(reason?.hasPrefix("mouse.verticalWheel.") == true, "rejected: \(toml) (\(reason ?? "accepted"))")
+        expect(reason?.hasPrefix("mouse.horizontalWheel.") == true, "rejected: \(toml) (\(reason ?? "accepted"))")
     }
     let schema = try! JSONSerialization.jsonObject(with: Data(configSchemaJSON.utf8)) as! [String: Any]
     let mouse = (schema["properties"] as! [String: Any])["mouse"] as! [String: Any]
-    let wheel = (mouse["properties"] as! [String: Any])["verticalWheel"] as? [String: Any]
-    expectEqual((wheel?["properties"] as? [String: Any]).map { Set($0.keys) }, ["up", "down"], "the schema describes both directions")
+    let wheel = (mouse["properties"] as! [String: Any])["horizontalWheel"] as? [String: Any]
+    expectEqual((wheel?["properties"] as? [String: Any]).map { Set($0.keys) }, ["left", "right"], "the schema describes both directions")
     // New files show the empty slots.
-    expect(text(encodeConfigTOML(.newFileDefaults, includeEmptyKeys: true)).contains("\n[mouse.verticalWheel]\ndown = {}\nup = {}\n"))
+    expect(text(encodeConfigTOML(.newFileDefaults, includeEmptyKeys: true)).contains("\n[mouse.horizontalWheel]\nleft = {}\nright = {}\n"))
 }

@@ -4,19 +4,30 @@ App source and Core tests live in `Source/HyperMug/`. Build and automation helpe
 
 ## Build and run
 
-On macOS with Xcode Command Line Tools installed, one command builds the local app:
+On macOS with Xcode Command Line Tools installed, set up your local signing identity once, then build:
 
 ```sh
+make setup-dev
 make dev
 ```
 
-This produces `build/HyperMug Dev.app` with an ad-hoc signature (`codesign -s -`). It needs no Apple Developer account, certificate or notarization. `make run` builds and launches Dev; `make restart` launches its existing build. `make setup` installs the repository's Node development tools when you need commit hooks and their checks.
+`make setup-dev` installs the locked Node tools and creates a persistent, self-signed code-signing identity in your login Keychain. macOS may require a one-time Keychain authorization. The private key stays on your Mac; no Apple Developer account or production certificate is needed. Repeating setup reuses the identity. Normal builds never generate a new certificate. `make dev` produces `build/HyperMug Dev.app` with that identity; `make run` builds and launches Dev, and `make restart` launches its existing build. `make setup` retains the Node-tooling-only setup command.
 
 Run `make help` for other commands. Set `BUILD_ROOT=/path/to/disposable-output` to isolate build products. The builder generates the variant's schema into `Contents/Resources` before signing. `make clean` removes the root build output.
 
 Local **HyperMug Dev** uses bundle ID `com.maxmeis.hypermug.dev`, `~/.config/hypermug-dev.toml`, and `~/Library/Logs/HyperMug Dev/`. Production keeps its own name, bundle ID, settings, permissions and logs. Both apps are independently installable. The local launcher copies Production settings only on the first run, disables local login launch, and restarts only Dev. Avoid enabling conflicting input mappings in two running instances.
 
-Ad-hoc signatures can require Accessibility or Input Monitoring grants again after rebuilding. They do not require a local signing identity or Apple credentials. Production signing and notarization run only in release CI; Dev builds have no update feed and never check for updates; rebuild with `make dev`.
+The development signature pins the stable bundle ID and your certificate fingerprint in its designated requirement. Keep the certificate and bundle path stable. Rotating/deleting the identity or switching from earlier ad-hoc builds can require permission grants again. A stable requirement improves identity continuity but does not guarantee TCC permission retention on every macOS version. See [Signing and permission persistence](signing.md) for actual API checks and limitations.
+
+PR CI deliberately uses `SIGN_ID=- make dev`: its disposable runner needs no persistent identity or Apple credentials. This explicit ad-hoc override does not demonstrate local permission persistence. Development and local production-test builds have no update feed and cannot update themselves into production.
+
+```sh
+make verify-signing                 # Verify the Dev signature and designated requirement
+make verify-permission-persistence  # Rebuild twice; compare identity and actual permissions
+make build-production              # Build the production variant locally without publishing
+```
+
+The production-test command creates `build/HyperMug.app` but does not install, launch, notarize or publish it. Its production bundle ID is for packaging validation; use Dev for running alongside a production installation.
 
 ## Architecture and checks
 

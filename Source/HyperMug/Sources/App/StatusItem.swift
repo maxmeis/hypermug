@@ -75,9 +75,16 @@ final class StatusItemController: NSObject {
         configErrorItem.isHidden = store.error == nil
         stayAwakeItem.state = engine.caffeineOn ? .on : .off
         let icon = statusIcon(caffeineOn: engine.caffeineOn, secureHolderName: tracker.info?.holder.name)
-        let image = NSImage(systemSymbolName: icon.symbol, accessibilityDescription: icon.label)
+        let image: NSImage?
+        switch icon.glyph {
+        case .mokaFilled: image = MokaPotStatusImage.make(filled: true)
+        case .mokaOutline: image = MokaPotStatusImage.make(filled: false)
+        case .secureInput: image = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: icon.label)
+        }
         image?.isTemplate = true
         statusItem.button?.image = image
+        statusItem.button?.setAccessibilityLabel(icon.label)
+        statusItem.button?.toolTip = icon.label
     }
 
     @objc private func clicked() {

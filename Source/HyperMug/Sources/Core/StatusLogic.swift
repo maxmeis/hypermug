@@ -1,25 +1,31 @@
 import Foundation
 
-/// Menu bar icon: SF Symbol name plus its accessibility label.
+/// Menu bar artwork plus its accessibility label.
+public enum StatusGlyph: Equatable {
+    case mokaFilled
+    case mokaOutline
+    case secureInput
+}
+
 public struct StatusIcon: Equatable {
-    public let symbol: String
+    public let glyph: StatusGlyph
     public let label: String
 
-    public init(symbol: String, label: String) {
-        self.symbol = symbol
+    public init(glyph: StatusGlyph, label: String) {
+        self.glyph = glyph
         self.label = label
     }
 }
 
 private let secureInputBlockedText = "Blocked by Secure Input"
 
-/// Lock = Secure Input is held by an app (event taps get no keystrokes); otherwise filled mug = Caffeine on.
+/// Lock = Secure Input is held by an app (event taps get no keystrokes); otherwise filled pot = Caffeine on.
 public func statusIcon(caffeineOn: Bool, secureHolderName: String?) -> StatusIcon {
     if let holder = secureHolderName {
-        return StatusIcon(symbol: "lock.fill",
+        return StatusIcon(glyph: .secureInput,
                           label: "\(AppIdentity.appName) — \(secureInputBlockedText) (\(holder))")
     }
-    return StatusIcon(symbol: caffeineOn ? "mug.fill" : "mug",
+    return StatusIcon(glyph: caffeineOn ? .mokaFilled : .mokaOutline,
                       label: "\(AppIdentity.appName) — Caffeine \(caffeineOn ? "on" : "off")")
 }
 

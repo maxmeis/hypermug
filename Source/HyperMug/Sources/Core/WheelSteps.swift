@@ -1,6 +1,6 @@
 import Foundation
 
-/// Turns mapped vertical wheel events into discrete action steps. Value type owned by `TapState`.
+/// Turns mapped horizontal wheel events into discrete action steps. Value type owned by `TapState`.
 ///
 /// A clicky wheel reports one line-delta event per notch: each event is one step. A high-resolution or smooth
 /// wheel reports a stream of small continuous point deltas: `continuousStepPoints` of travel make one step.

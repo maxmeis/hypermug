@@ -1,11 +1,9 @@
 name: CI
 
-# The git hooks (.husky/) can be skipped with --no-verify. This workflow cannot: it re-runs the same
-# checks plus the commit message lint.
+# The squash commit uses the PR title, so validate that title on every edit.
 on:
-  push:
-    branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   workflow_dispatch:
 
 concurrency:
@@ -47,7 +45,7 @@ jobs:
         run: test "$RESULT" = success && { test "$NATIVE" = true || test "$NATIVE" = false; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          fetch-depth: 0 # commitlint needs the full range, not just the tip
+          fetch-depth: 0
           persist-credentials: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -55,7 +53,7 @@ jobs:
           node-version-file: package.json # reads the `volta.node` pin
           cache: npm
 
-      - run: make ci-tools
+      - run: HUSKY=0 make ci-tools
 
       - name: Layer rules
         run: make check-layers
@@ -63,7 +61,9 @@ jobs:
       - name: Release metadata and workflow checks
         run: |
           make test-ci
+          make test-dev-signing
           make test-release
+          make test-release-queue
           make check-shell
 
       - name: Issue automation and content checks
@@ -86,7 +86,7 @@ jobs:
       - name: Build Dev bundle and verify icon, Sparkle framework and no update feed
         if: needs.changes.outputs.native == 'true'
         run: |
-          make dev
+          SIGN_ID=- make dev
           app="build/HyperMug Dev.app"
           test "$(plutil -extract CFBundleIconFile raw -o - "$app/Contents/Info.plist")" = HyperMug.icns
           test "$(plutil -extract HyperMugReleaseChannel raw -o - "$app/Contents/Info.plist")" = local
@@ -99,12 +99,21 @@ jobs:
           python3 helpers/check-bundle-schema.py "$app"
           codesign --verify --deep --strict "$app"
 
-      - name: Commit messages (pull request)
+      - name: Conventional Commit PR title
         if: github.event_name == 'pull_request'
-        run: make lint-commits FROM="${{ github.event.pull_request.base.sha }}" TO="${{ github.event.pull_request.head.sha }}"
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$PR_TITLE" | npx --no-install commitlint
+          if printf '%s\n%s\n' "$PR_TITLE" "$PR_BODY" | grep -Eiq '\[(skip ci|ci skip|no ci|skip actions|actions skip|skip release)\]|^skip-checks:[[:space:]]*true'; then
+            echo 'Remove CI/release skip directives from the squash commit title or body' >&2
+            exit 1
+          fi
 
       - name: Commit messages (branch)
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch'
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}

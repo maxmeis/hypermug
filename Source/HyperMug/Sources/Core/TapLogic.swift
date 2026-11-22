@@ -29,7 +29,7 @@ public struct TapSettings: Equatable {
         forward = config.mouse.buttons.forward
         invertVertical = config.mouse.invertScroll.vertical
         invertHorizontal = config.mouse.invertScroll.horizontal
-        wheel = config.mouse.verticalWheel
+        wheel = config.mouse.horizontalWheel
     }
 
     /// Only the event types that are needed.
@@ -64,16 +64,17 @@ public func shouldInvertScroll(scrollPhase: Int64, momentumPhase: Int64) -> Bool
     scrollPhase == 0 && momentumPhase == 0
 }
 
-/// Meh = ⌃⌥⌘; Hyper = ⌃⌥⇧⌘; Default = none.
+/// Meh = ⌃⌥⇧; Three Mod = ⌃⌥⌘; Hyper = ⌃⌥⇧⌘; Default = none.
 public func capsModifierFlags(for mode: CapsMode) -> CGEventFlags {
     switch mode {
     case .default: return []
-    case .meh: return [.maskControl, .maskAlternate, .maskCommand]
+    case .meh: return [.maskControl, .maskAlternate, .maskShift]
+    case .threeMod: return [.maskControl, .maskAlternate, .maskCommand]
     case .hyper: return [.maskControl, .maskAlternate, .maskCommand, .maskShift]
     }
 }
 
-/// Flags of a key event while Caps is held: everything already on it (physically held modifiers) plus Meh/Hyper.
+/// Flags of a key event while Caps is held: everything already on it (physically held modifiers) plus the selected mode.
 public func flagsWhileCapsHeld(_ original: CGEventFlags, mode: CapsMode) -> CGEventFlags {
     guard mode.isModifier else { return original }
     return original.subtracting(.maskAlphaShift).union(capsModifierFlags(for: mode))
@@ -275,21 +276,23 @@ public struct TapState: Equatable {
         }
     }
 
-    /// Consumes a mouse-wheel event whose physical vertical direction is mapped; nil = normal scroll handling.
+    /// Consumes a mouse-wheel event whose physical horizontal direction is mapped; nil = normal scroll handling.
     /// Bindings see the device direction: Natural Scrolling is undone here, and inversion only applies to passed events.
     private mutating func wheelBinding(_ e: TapEvent, settings: TapSettings) -> (TapDecision, [TapEffect])? {
         guard !settings.wheel.isEmpty, shouldInvertScroll(scrollPhase: e.scrollPhase, momentumPhase: e.momentumPhase)
         else { return nil }
-        let primary = e.continuous ? Double(e.vertical.point) : Double(e.vertical.line)
-        let delta = primary != 0 ? primary : e.vertical.fixed
+        let primary = e.continuous ? Double(e.horizontal.point) : Double(e.horizontal.line)
+        let delta = primary != 0 ? primary : e.horizontal.fixed
         guard delta != 0 else { return nil }
-        let direction: WheelDirection = (delta > 0) != e.invertedFromDevice ? .up : .down
+        let direction: WheelDirection = (delta > 0) != e.invertedFromDevice ? .left : .right
         guard let action = settings.wheel.action(for: direction) else {
             wheelSteps.reset()
             return nil
         }
         let fires = wheelSteps.step(direction, continuousPoints: e.continuous ? abs(delta) : nil, nowNanos: e.nowNanos)
-        return (TapDecision(pass: false), fires ? [.run(action)] : [])
+        // Keep vertical motion in a mixed-axis event, including its configured inversion.
+        let vertical = settings.invertVertical ? negated(e.vertical) : nil
+        return (TapDecision(vertical: vertical, horizontal: .zero), fires ? [.run(action)] : [])
     }
 
     /// nil when the axis carries no movement (nothing to rewrite).

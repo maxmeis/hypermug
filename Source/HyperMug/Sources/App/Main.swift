@@ -128,6 +128,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 enum HyperMugMain {
     static func main() {
+        if CommandLine.arguments.contains("--diagnose-permissions") {
+            PermissionDiagnostics.runAndExit()
+        }
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let delegate = AppDelegate()

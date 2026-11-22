@@ -265,7 +265,7 @@ private struct HyperMugView: View {
                             checkRow(check)
                         }
                         Divider()
-                        LabeledContent("Mouse bindings", value: "\([model.config.mouse.buttons.back, model.config.mouse.buttons.forward, model.config.mouse.buttons.thumb, model.config.mouse.verticalWheel.up, model.config.mouse.verticalWheel.down].compactMap { $0 }.count) configured")
+                        LabeledContent("Mouse bindings", value: "\([model.config.mouse.buttons.back, model.config.mouse.buttons.forward, model.config.mouse.buttons.thumb, model.config.mouse.horizontalWheel.left, model.config.mouse.horizontalWheel.right].compactMap { $0 }.count) configured")
                         LabeledContent("Swipe bindings", value: "\([3, 4].flatMap { fingers in SwipeDirection.allCases.compactMap { model.config.trackpad.action(fingers: fingers, direction: $0) } }.count) configured")
                         LabeledContent("Shell deadline", value: "\(model.config.shellTimeoutSeconds.formatted()) seconds")
                         Text("Edit the TOML file in Configuration. Save applies validated settings; the menu’s Stay Awake checkbox controls only this session.")

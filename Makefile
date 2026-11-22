@@ -1,16 +1,19 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help dev check-content check-automation check-website triage setup install-tools ci-tools hooks build build-production run restart test test-ci test-release test-runtime test-window check-shell check-layers compile-check check release publish lint-commit lint-commits clean
+.PHONY: help dev verify-signing verify-permission-persistence test-dev-signing check-content check-automation check-website triage setup setup-dev install-tools ci-tools hooks build build-production run restart test test-ci test-release test-runtime test-window check-shell check-layers compile-check check release publish lint-commit lint-commits clean
 
 help:
 	@printf '%s\n' \
 	  'make setup             Install development tools' \
-	  'make dev               Build an ad-hoc signed HyperMug Dev app' \
+	  'make setup-dev         Create/reuse your persistent local signing identity' \
+	  'make dev               Build HyperMug Dev with your local identity' \
+	  'make verify-signing    Verify Dev signature, identity and nested code' \
+	  'make verify-permission-persistence  Compare real TCC preflights across two Dev rebuilds' \
 	  'make run               Build Dev, restart Dev, and open Doctor' \
 	  'make restart           Restart the existing Dev build and open Doctor' \
 	  'make build             Build HyperMug Dev without launching it' \
-	  'make build-production  Build a local production-variant app' \
+	  'make build-production  Build an ad-hoc local production-variant app without updates' \
 	  'make check             Run all checks' \
 	  'make test              Run Core tests with the coverage gate' \
 	  'make test-release      Run release integration tests' \
@@ -22,6 +25,9 @@ help:
 	  'make clean             Remove generated build files'
 
 setup: install-tools
+
+setup-dev: ci-tools
+	./helpers/dev-signing.sh setup
 
 install-tools:
 	npm install
@@ -35,8 +41,14 @@ hooks:
 build:
 	./helpers/build.sh
 
+verify-signing:
+	./helpers/verify-signing.sh
+
+verify-permission-persistence:
+	./helpers/check-permissions.sh --verify-dev-rebuilds
+
 build-production:
-	$(MAKE) build APP_VARIANT=production RELEASE_CHANNEL=production REQUIRE_SIGNING=0
+	$(MAKE) build APP_VARIANT=production RELEASE_CHANNEL=local REQUIRE_SIGNING=0 SIGN_ID=-
 
 run:
 	$(MAKE) build APP_VARIANT=dev REQUIRE_SIGNING=0
@@ -60,6 +72,13 @@ test-release:
 test-ci:
 	GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s helpers -p 'test_ci*.py'
 
+test-dev-signing:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s helpers -p 'test_dev_signing*.py'
+
+.PHONY: test-release-queue
+test-release-queue:
+	npm run test:release-queue
+
 check-shell:
 	@for helper in helpers/*.sh; do bash -n "$$helper" || exit $$?; done
 	@for hook in .husky/commit-msg .husky/pre-commit .husky/pre-push helpers/hook-lib.sh; do sh -n "$$hook" || exit $$?; done
@@ -70,7 +89,7 @@ check-layers:
 compile-check:
 	./helpers/compile-check.sh
 
-check: check-layers check-shell test-ci test-release test compile-check check-automation check-website test-runtime
+check: check-layers check-shell test-ci test-dev-signing test-release test-release-queue test compile-check check-automation check-website test-runtime
 
 release:
 	+./helpers/release.sh
@@ -89,7 +108,7 @@ clean:
 
 # Repository automation uses the same command entry point as the app.
 dev:
-	$(MAKE) build APP_VARIANT=dev REQUIRE_SIGNING=0 SIGN_ID=-
+	$(MAKE) build APP_VARIANT=dev REQUIRE_SIGNING=0
 
 check-content:
 	python3 helpers/automation/check-content.py

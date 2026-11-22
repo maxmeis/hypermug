@@ -51,40 +51,40 @@ func configTests() {
     encodeTests()
     anyKeyTests()
     trackpadTests()
-    verticalWheelTests()
+    horizontalWheelTests()
 }
 
-private func verticalWheelTests() {
-    for json in [#"{"mouse":{"verticalWheel":null}}"#, #"{"mouse":{"verticalWheel":{}}}"#,
-                 #"{"mouse":{"verticalWheel":{"up":{},"down":null}}}"#] {
+private func horizontalWheelTests() {
+    for json in [#"{"mouse":{"horizontalWheel":null}}"#, #"{"mouse":{"horizontalWheel":{}}}"#,
+                 #"{"mouse":{"horizontalWheel":{"left":{},"right":null}}}"#] {
         expectConfig(json, AppConfig())
     }
-    expect(AppConfig().mouse.verticalWheel.isEmpty && AppConfig.newFileDefaults.mouse.verticalWheel.isEmpty,
+    expect(AppConfig().mouse.horizontalWheel.isEmpty && AppConfig.newFileDefaults.mouse.horizontalWheel.isEmpty,
            "wheel directions are unbound by default")
-    let json = #"{"helpers":{"previousWindow":"aerospace focus left"},"mouse":{"verticalWheel":{"up":{"helper":"previousWindow"},"down":{"shortcut":["ctrl","down"]}}}}"#
+    let json = #"{"helpers":{"previousWindow":"aerospace focus left"},"mouse":{"horizontalWheel":{"left":{"helper":"previousWindow"},"right":{"shortcut":["ctrl","down"]}}}}"#
     let config = decode(json)!.config
-    expectEqual(config.mouse.verticalWheel, WheelMap(up: .helper("previousWindow"), down: shortcut(["ctrl", "down"])))
-    expectEqual(config.mouse.verticalWheel.action(for: .up), .helper("previousWindow"))
-    expectEqual(config.mouse.verticalWheel.action(for: .down), shortcut(["ctrl", "down"]))
-    expectEqual(config.resolvedActions().mouse.verticalWheel.up, .shell("aerospace focus left"), "wheel helpers resolve")
+    expectEqual(config.mouse.horizontalWheel, WheelMap(left: .helper("previousWindow"), right: shortcut(["ctrl", "down"])))
+    expectEqual(config.mouse.horizontalWheel.action(for: .left), .helper("previousWindow"))
+    expectEqual(config.mouse.horizontalWheel.action(for: .right), shortcut(["ctrl", "down"]))
+    expectEqual(config.resolvedActions().mouse.horizontalWheel.left, .shell("aerospace focus left"), "wheel helpers resolve")
     expectConfig(text(config), config)
 
     // Only mapped directions are written; an empty map is omitted.
-    let single = AppConfig(mouse: MouseConfig(verticalWheel: WheelMap(down: .shell("next"))))
-    let wheel = (jsonObject(encodeConfig(single))["mouse"] as? [String: Any])?["verticalWheel"] as? [String: Any]
-    expectEqual(Set(wheel?.keys.map { $0 } ?? []), ["down"], "unmapped up is omitted")
-    expect((jsonObject(encodeConfig(AppConfig()))["mouse"] as? [String: Any])?["verticalWheel"] == nil, "empty wheel map omitted")
+    let single = AppConfig(mouse: MouseConfig(horizontalWheel: WheelMap(right: .shell("next"))))
+    let wheel = (jsonObject(encodeConfig(single))["mouse"] as? [String: Any])?["horizontalWheel"] as? [String: Any]
+    expectEqual(Set(wheel?.keys.map { $0 } ?? []), ["right"], "unmapped left is omitted")
+    expect((jsonObject(encodeConfig(AppConfig()))["mouse"] as? [String: Any])?["horizontalWheel"] == nil, "empty wheel map omitted")
 
-    expectEqual(decode(#"{"mouse":{"verticalWheel":{"left":{},"up":{"open":"x","shell":"a"}}}}"#)?.unknownKeys,
-                ["mouse.verticalWheel.left", "mouse.verticalWheel.up.open"], "unknown wheel keys are reported")
-    expectRejected(#"{"mouse":{"verticalWheel":{"up":{"helper":"missing"}}}}"#, "mouse.verticalWheel.up.helper: unknown helper \"missing\"")
-    expectRejected(#"{"mouse":{"verticalWheel":{"down":{"helper":"missing"}}}}"#, "mouse.verticalWheel.down.helper: unknown helper \"missing\"")
-    expectRejected(#"{"mouse":{"verticalWheel":{"up":{"shell":"a","shortcut":["cmd","a"]}}}}"#,
-                   "mouse.verticalWheel.up: needs exactly one of shortcut/shell/helper")
-    expectRejected(#"{"mouse":{"verticalWheel":{"down":{"shortcut":["cmd"]}}}}"#,
-                   "mouse.verticalWheel.down.shortcut: shortcut [\"cmd\"] needs exactly one key besides modifiers")
-    expectRejected(#"{"mouse":{"verticalWheel":{"up":"next"}}}"#, "mouse.verticalWheel.up: expected an object")
-    expectRejected(#"{"mouse":{"verticalWheel":[]}}"#, "mouse.verticalWheel: expected an object")
+    expectEqual(decode(#"{"mouse":{"horizontalWheel":{"up":{},"left":{"open":"x","shell":"a"}}}}"#)?.unknownKeys,
+                ["mouse.horizontalWheel.up", "mouse.horizontalWheel.left.open"], "unknown wheel keys are reported")
+    expectRejected(#"{"mouse":{"horizontalWheel":{"left":{"helper":"missing"}}}}"#, "mouse.horizontalWheel.left.helper: unknown helper \"missing\"")
+    expectRejected(#"{"mouse":{"horizontalWheel":{"right":{"helper":"missing"}}}}"#, "mouse.horizontalWheel.right.helper: unknown helper \"missing\"")
+    expectRejected(#"{"mouse":{"horizontalWheel":{"left":{"shell":"a","shortcut":["cmd","a"]}}}}"#,
+                   "mouse.horizontalWheel.left: needs exactly one of shortcut/shell/helper")
+    expectRejected(#"{"mouse":{"horizontalWheel":{"right":{"shortcut":["cmd"]}}}}"#,
+                   "mouse.horizontalWheel.right.shortcut: shortcut [\"cmd\"] needs exactly one key besides modifiers")
+    expectRejected(#"{"mouse":{"horizontalWheel":{"left":"next"}}}"#, "mouse.horizontalWheel.left: expected an object")
+    expectRejected(#"{"mouse":{"horizontalWheel":[]}}"#, "mouse.horizontalWheel: expected an object")
 }
 
 private func helperTests() {
@@ -177,7 +177,7 @@ private func anyKeyTests() {
 
 private func decodeDefaultsTests() {
     expectConfig("{}", AppConfig())
-    expectEqual(AppConfig(), AppConfig(capsLock: .meh, caffeineOnLaunch: true, launchAtLogin: false, autoUpdate: true, mouse: MouseConfig()),
+    expectEqual(AppConfig(), AppConfig(capsLock: .threeMod, caffeineOnLaunch: true, launchAtLogin: false, autoUpdate: true, mouse: MouseConfig()),
                 "documented defaults")
     expectConfig("{\"autoUpdate\":true}", AppConfig(autoUpdate: true))
     expectConfig("{\"autoUpdate\":false}", AppConfig(autoUpdate: false))
@@ -189,6 +189,7 @@ private func decodeDefaultsTests() {
     expectConfig("{\"capsLock\":\"default\"}", AppConfig(capsLock: .default))
     expectConfig("{\"capsLock\":\"hyper\"}", AppConfig(capsLock: .hyper))
     expectConfig("{\"capsLock\":\"meh\"}", AppConfig(capsLock: .meh))
+    expectConfig("{\"capsLock\":\"threeMod\"}", AppConfig(capsLock: .threeMod))
     expectConfig("{\"mouse\":{\"invertScroll\":{\"vertical\":true}}}",
                  AppConfig(mouse: MouseConfig(invertScroll: InvertScroll(vertical: true))))
     expectConfig("{\"mouse\":{\"invertScroll\":{\"horizontal\":true}}}",
@@ -205,9 +206,9 @@ private func decodeDefaultsTests() {
            "empty and whitespace-only data is blank")
     expect(!isBlankConfigData(Data("{}".utf8)), "{} is not blank")
 
-    expect(!CapsMode.default.isModifier && CapsMode.meh.isModifier && CapsMode.hyper.isModifier,
-           "only meh and hyper are modifier modes")
-    expectEqual(CapsMode.allCases.map { $0.rawValue }, ["default", "meh", "hyper"], "capsLock vocabulary")
+    expect(!CapsMode.default.isModifier && CapsMode.meh.isModifier && CapsMode.threeMod.isModifier && CapsMode.hyper.isModifier,
+           "all non-default modes are modifiers")
+    expectEqual(CapsMode.allCases.map { $0.rawValue }, ["default", "meh", "threeMod", "hyper"], "capsLock vocabulary")
 }
 
 private func decodeActionTests() {
@@ -273,7 +274,7 @@ private func decodeActionTests() {
 }
 
 private func decodeRejectionTests() {
-    expectRejected("{\"capsLock\":\"upper\"}", "capsLock must be \"default\", \"meh\" or \"hyper\" (got \"upper\")")
+    expectRejected("{\"capsLock\":\"upper\"}", "capsLock must be \"default\", \"meh\", \"threeMod\" or \"hyper\" (got \"upper\")")
     expectRejected("{\"capsLock\":5}", "capsLock: expected a string")
     expectRejected("{\"caffeineOnLaunch\":\"yes\"}", "caffeineOnLaunch: expected true or false")
     expectRejected("{\"launchAtLogin\":1}", "launchAtLogin: expected true or false")
@@ -343,7 +344,7 @@ private func encodeTests() {
     {
       "autoUpdate" : true,
       "caffeineOnLaunch" : true,
-      "capsLock" : "meh",
+      "capsLock" : "threeMod",
       "launchAtLogin" : false,
       "mouse" : {
         "invertScroll" : {
@@ -360,7 +361,7 @@ private func encodeTests() {
     let prev = "/opt/homebrew/bin/aerospace workspace --no-stdin --wrap-around prev"
     let expectedNewFile: [String: Any] = [
         "shellTimeoutSeconds": 10,
-        "autoUpdate": true, "caffeineOnLaunch": true, "capsLock": "meh", "launchAtLogin": true,
+        "autoUpdate": true, "caffeineOnLaunch": true, "capsLock": "threeMod", "launchAtLogin": true,
         "mouse": ["invertScroll": ["horizontal": false, "vertical": false],
                   "buttons": ["back": ["shell": next], "forward": ["shell": prev]]],
         "trackpad": ["threeFingerSwipe": ["left": ["shell": next], "right": ["shell": prev]],

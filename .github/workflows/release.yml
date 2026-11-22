@@ -2,12 +2,10 @@ name: Production release
 on:
   push:
     branches: [main]
-    paths:
-      - 'Source/HyperMug/**'
-      - 'Source/Branding/**'
-      - 'helpers/**'
-      - 'Makefile'
-      - '.github/workflows/release.yml'
+  # GITHUB_TOKEN merges do not start a push workflow; retry any partial release.
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -15,82 +13,102 @@ concurrency:
   cancel-in-progress: false
   queue: max
 jobs:
-  test:
+  preflight:
     if: github.repository == 'maxmeis/hypermug' && github.ref == 'refs/heads/main'
-    runs-on: macos-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: package.json
-          package-manager-cache: false
-      - run: make ci-tools
-      - run: make check
-  release:
-    needs: test
-    runs-on: macos-latest
-    timeout-minutes: 60
-    environment: production
-    permissions:
-      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      pending: ${{ steps.queue.outputs.pending }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Select version and create immutable source tag
-        id: version
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Check whether a source needs release
+        id: queue
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git fetch origin --tags --force
-          tags="$RUNNER_TEMP/production-tags"
-          : > "$tags"
-          while IFS= read -r tag; do
-            printf '%s %s\n' "$tag" "$(git rev-parse "${tag}^{commit}")" >> "$tags"
-          done < <(git tag -l 'v[0-9]*.[0-9]*.[0-9]*')
-          version="$(python3 helpers/release_metadata.py version --tags "$tags" --source-sha "$GITHUB_SHA" --run-number "$GITHUB_RUN_NUMBER")"
-          tag="v$version"
-          if ! git show-ref --verify --quiet "refs/tags/$tag"; then
-            object="$(gh api -X POST "repos/$GITHUB_REPOSITORY/git/tags" -f tag="$tag" -f message="HyperMug $version; source $GITHUB_SHA" -f object="$GITHUB_SHA" -f type=commit --jq .sha)"
-            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$object" >/dev/null
-            git fetch origin "refs/tags/$tag:refs/tags/$tag"
+          git fetch --prune origin '+refs/heads/main:refs/remotes/origin/main' '+refs/tags/*:refs/tags/*'
+          pending="$(node helpers/release_queue.mjs pending --main origin/main)"
+          test "$pending" = true || test "$pending" = false
+          echo "pending=$pending" >> "$GITHUB_OUTPUT"
+  release:
+    needs: preflight
+    if: needs.preflight.outputs.pending == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    environment: production
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - run: HUSKY=0 npm ci
+      - name: Select oldest unpublished source with semantic-release
+        id: queue
+        run: |
+          set -euo pipefail
+          git fetch --prune origin '+refs/heads/main:refs/remotes/origin/main' '+refs/tags/*:refs/tags/*'
+          echo "tooling_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          node helpers/release_queue.mjs next --main origin/main --output "$GITHUB_OUTPUT" --notes-file "$RUNNER_TEMP/release-notes.md"
+          if test -s "$RUNNER_TEMP/release-notes.md"; then
+            printf '\nBuild tooling: %s\n' "$(git rev-parse HEAD)" >> "$RUNNER_TEMP/release-notes.md"
           fi
-          test "$(git rev-parse "${tag}^{commit}")" = "$GITHUB_SHA"
-          echo "value=$version" >> "$GITHUB_OUTPUT"
-      - name: Reuse and verify an existing archive on rerun
+      - name: Check out source with current release tooling
+        if: steps.queue.outputs.pending == 'true'
+        env:
+          SOURCE_SHA: ${{ steps.queue.outputs.source_sha }}
+          TOOLING_SHA: ${{ steps.queue.outputs.tooling_sha }}
+        run: |
+          set -euo pipefail
+          git checkout --detach "$SOURCE_SHA"
+          # The source may predate this pipeline. Overlay only build tooling;
+          # Source/ and the app's actual capabilities stay at SOURCE_SHA.
+          git restore --source "$TOOLING_SHA" --worktree -- Makefile helpers .github/workflows package.json package-lock.json release.config.mjs
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - name: Tests and build validation
+        if: steps.queue.outputs.pending == 'true'
+        run: make check
+      - name: Reuse a verified archive on retry
+        if: steps.queue.outputs.pending == 'true'
         id: existing
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.value }}
+          VERSION: ${{ steps.queue.outputs.version }}
+          BUILD_NUMBER: ${{ steps.queue.outputs.build_number }}
+          SOURCE_SHA: ${{ steps.queue.outputs.source_sha }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           tag="v$VERSION"
           asset="HyperMug-$VERSION.zip"
+          if git rev-parse "$tag^{commit}" >/dev/null 2>&1; then
+            test "$(git rev-parse "$tag^{commit}")" = "$SOURCE_SHA"
+          fi
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body >/dev/null 2>&1; then
-            body="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
-            test "$body" = "HyperMug $VERSION; source $GITHUB_SHA"
-            draft="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)"
             if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -Fxq "$asset"; then
               mkdir -p build/release
               gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$asset" --dir build/release
-              ./helpers/verify_release_archive.sh "build/release/$asset" "$VERSION" "$APPLE_TEAM_ID"
+              ./helpers/verify_release_archive.sh "build/release/$asset" "$VERSION" "$APPLE_TEAM_ID" "$BUILD_NUMBER"
               echo 'reuse=true' >> "$GITHUB_OUTPUT"
-            elif test "$draft" = false; then
-              echo 'Published release has no immutable app archive' >&2
+            elif test "$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" != true; then
+              echo 'Published release has no app archive' >&2
               exit 1
             fi
           fi
       - name: Build, sign, and notarize
-        if: steps.existing.outputs.reuse != 'true'
+        if: steps.queue.outputs.pending == 'true' && steps.existing.outputs.reuse != 'true'
         env:
-          VERSION: ${{ steps.version.outputs.value }}
+          VERSION: ${{ steps.queue.outputs.version }}
+          BUILD_NUMBER: ${{ steps.queue.outputs.build_number }}
+          SOURCE_SHA: ${{ steps.queue.outputs.source_sha }}
           SIGN_ID: ${{ vars.SIGN_ID }}
           DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
           DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
@@ -98,12 +116,26 @@ jobs:
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
           APP_STORE_CONNECT_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
-        run: ./helpers/release.sh
+        run: GITHUB_SHA="$SOURCE_SHA" ./helpers/release.sh
       - name: Publish release, Sparkle appcast, and Homebrew cask
+        if: steps.queue.outputs.pending == 'true'
         env:
-          VERSION: ${{ steps.version.outputs.value }}
+          VERSION: ${{ steps.queue.outputs.version }}
+          BUILD_NUMBER: ${{ steps.queue.outputs.build_number }}
+          SOURCE_SHA: ${{ steps.queue.outputs.source_sha }}
+          RELEASE_NOTES_FILE: ${{ steps.queue.outputs.notes_file }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           GH_TOKEN: ${{ github.token }}
           HOMEBREW_SSH_PRIVATE_KEY: ${{ secrets.HOMEBREW_SSH_PRIVATE_KEY }}
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
-        run: ./helpers/publish_release.sh
+        run: GITHUB_SHA="$SOURCE_SHA" ./helpers/publish_release.sh
+      - name: Drain remaining release backlog
+        if: steps.queue.outputs.pending == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --prune origin '+refs/heads/main:refs/remotes/origin/main' '+refs/tags/*:refs/tags/*'
+          if test "$(node helpers/release_queue.mjs pending --main origin/main)" = true; then
+            gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main
+          fi

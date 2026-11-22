@@ -36,7 +36,7 @@ private func buttonSchema(_ description: String) -> String {
             },
             "shortcut": {
               "type": "array",
-              "description": "Keyboard shortcut to send, as an array of key names: any modifiers plus exactly one key, e.g. [\"cmd\", \"[\"], [\"meh\", \"k\"] or [\"ctrl\", \"left\"]. Modifiers: cmd, ctrl, alt (opt, option), shift, meh (ctrl+alt+cmd), hyper (ctrl+alt+shift+cmd). Keys: a-z, 0-9, [ ] ; ' , . / \\ - = `, f1-f20, left, right, up, down, escape (esc), return (enter), tab, space, delete (backspace), forwarddelete, home, end, pageup, pagedown. The names are listed in lowercase; \#(AppIdentity.appName) also accepts other letter case.",
+              "description": "Keyboard shortcut to send, as an array of key names: any modifiers plus exactly one key, e.g. [\"cmd\", \"[\"], [\"threemod\", \"k\"] or [\"ctrl\", \"left\"]. Modifiers: cmd, ctrl, alt (opt, option), shift, meh (ctrl+alt+shift), threemod (ctrl+alt+cmd), hyper (ctrl+alt+shift+cmd). Keys: a-z, 0-9, [ ] ; ' , . / \\ - = `, f1-f20, left, right, up, down, escape (esc), return (enter), tab, space, delete (backspace), forwarddelete, home, end, pageup, pagedown. The names are listed in lowercase; \#(AppIdentity.appName) also accepts other letter case.",
               "minItems": 1,
               "items": {
                 "type": "string",
@@ -85,8 +85,8 @@ public let configSchemaJSON: String = #"""
     },
     "capsLock": {
       "type": "string",
-      "description": "What Caps Lock does. default = unchanged; meh = hold for Ctrl+Opt+Cmd, tap for Escape; hyper = hold for Ctrl+Opt+Shift+Cmd, tap for Escape.",
-      "enum": ["default", "meh", "hyper"]
+      "description": "What Caps Lock does. default = unchanged; meh = hold for Ctrl+Opt+Shift; threeMod = hold for Ctrl+Opt+Cmd; hyper = hold for Ctrl+Opt+Shift+Cmd. Each modifier mode taps for Escape.",
+      "enum": ["default", "meh", "threeMod", "hyper"]
     },
     "launchAtLogin": {
       "type": "boolean",
@@ -168,13 +168,13 @@ public let configSchemaJSON: String = #"""
             "thumb": \#(buttonSchema("Thumb button of the MX Master 3S over Bluetooth (needs Input Monitoring permission)."))
           }
         },
-        "verticalWheel": {
+        "horizontalWheel": {
           "type": "object",
-          "description": "Actions for physical vertical wheel steps of a mouse wheel. A mapped direction is consumed and runs its action once per wheel step; fast or free-spinning rolls are limited. An unmapped direction keeps normal scrolling. Directions refer to the physical wheel, independent of Natural Scrolling and invertScroll.vertical. Trackpad and Magic Mouse scrolling is never bound.",
+          "description": "Actions for physical horizontal (thumb) wheel steps of a mouse wheel. A mapped direction is consumed and runs its action once per wheel step; fast or free-spinning rolls are limited. An unmapped direction keeps normal scrolling. Directions refer to the physical wheel, independent of Natural Scrolling and invertScroll.horizontal. Trackpad and Magic Mouse scrolling is never bound.",
           "additionalProperties": false,
           "properties": {
-            "up": \#(buttonSchema("Wheel rolled up (away from you).")),
-            "down": \#(buttonSchema("Wheel rolled down (toward you)."))
+            "left": \#(buttonSchema("Wheel rolled left.")),
+            "right": \#(buttonSchema("Wheel rolled right."))
           }
         }
       }

@@ -27,7 +27,8 @@ private let shortcutModifierTable: [(String, CGEventFlags)] = [
     ("opt", .maskAlternate),
     ("option", .maskAlternate),
     ("shift", .maskShift),
-    ("meh", [.maskControl, .maskAlternate, .maskCommand]),
+    ("meh", [.maskControl, .maskAlternate, .maskShift]),
+    ("threemod", [.maskControl, .maskAlternate, .maskCommand]),
     ("hyper", [.maskControl, .maskAlternate, .maskShift, .maskCommand]),
 ]
 

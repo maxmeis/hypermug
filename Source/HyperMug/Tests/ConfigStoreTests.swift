@@ -126,6 +126,35 @@ func configStoreTests() {
     documentSaveTests()
     tomlStoreTests()
     legacyFileTests()
+    retiredWheelPlaceholderTests()
+}
+
+private func retiredWheelPlaceholderTests() {
+    let h = Harness()
+    // Every default file written by the previous release contained these empty vertical-wheel slots.
+    let old = """
+    capsLock = "hyper"
+    [mouse.buttons]
+    back.shell = "echo back"
+    [mouse.verticalWheel]
+    down = {}
+    up = {}
+    [trackpad.threeFingerSwipe]
+    left.shell = "echo workspace"
+    """
+    h.put(old)
+    h.store.start()
+    expect(h.errors.isEmpty && h.store.error == nil, "an older generated configuration still loads")
+    expectEqual(h.store.config.capsLock, .hyper)
+    expectEqual(h.store.config.mouse.buttons.back, .shell("echo back"))
+    expectEqual(h.store.config.trackpad.threeFingerSwipe.left, .shell("echo workspace"))
+    expect(h.store.config.mouse.horizontalWheel.isEmpty, "old empty slots never enable horizontal actions")
+    expectEqual(h.fileText, old, "loading preserves the original document")
+    expectEqual(try? h.store.validateDocument(Data(old.utf8)).get().config, h.store.config,
+                "the editor accepts the same compatibility form")
+    h.externalEdit(old.replacingOccurrences(of: "up = {}", with: "up.shell = \"echo retired\""))
+    expect(h.store.error?.reason.contains("no longer supported") == true, "configured vertical actions need repair")
+    expectEqual(h.store.config.mouse.buttons.back, .shell("echo back"), "an invalid edit keeps the last good mappings")
 }
 
 // MARK: - start
