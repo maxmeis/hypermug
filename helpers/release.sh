@@ -8,21 +8,43 @@ cd "$(dirname "$0")/.."
 [[ "$SIGN_ID" == 'Developer ID Application: '* ]] || { echo 'Production requires a Developer ID Application identity' >&2; exit 1; }
 . helpers/notary_auth.sh
 umask 077
+original_keychains=()
+keychain_list="$(security list-keychains -d user)" || { echo 'Could not read the original keychain search list' >&2; exit 1; }
+while IFS= read -r line; do
+  if [[ -n "$line" ]]; then original_keychains+=("$line"); fi
+done < <(printf '%s\n' "$keychain_list" | sed -E 's/^[[:space:]]*"//; s/"[[:space:]]*$//')
 work="$(mktemp -d)"
 keychain="$work/release.keychain-db"
-original_keychains=()
-while IFS= read -r line; do original_keychains+=("$line"); done < <(security list-keychains -d user | sed -E 's/^[[:space:]]*"//; s/"[[:space:]]*$//')
+created=false
+search_list_changed=false
 cleanup() {
-  security list-keychains -d user -s "${original_keychains[@]}" >/dev/null 2>&1 || true
-  security delete-keychain "$keychain" >/dev/null 2>&1 || true
-  rm -rf "$work"
+  local status="$?"
+  trap - EXIT INT TERM
+  if [[ "$search_list_changed" == true ]]; then
+    if ! security list-keychains -d user -s ${original_keychains[@]+"${original_keychains[@]}"} >/dev/null; then
+      echo 'Could not restore the original keychain search list' >&2
+      status=1
+    fi
+  fi
+  if [[ "$created" == true ]]; then
+    if ! security delete-keychain "$keychain" >/dev/null; then
+      echo 'Could not delete the temporary release keychain' >&2
+      status=1
+    fi
+  fi
+  rm -rf "$work" || status=1
+  exit "$status"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 password="$(openssl rand -hex 32)"
 security create-keychain -p "$password" "$keychain"
+created=true
 security unlock-keychain -p "$password" "$keychain"
 security set-keychain-settings -lut 21600 "$keychain"
-security list-keychains -d user -s "$keychain" "${original_keychains[@]}"
+search_list_changed=true
+security list-keychains -d user -s "$keychain" ${original_keychains[@]+"${original_keychains[@]}"}
 printf '%s' "$DEVELOPER_ID_P12_BASE64" | base64 -D > "$work/certificate.p12"
 security import "$work/certificate.p12" -k "$keychain" -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
 security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
