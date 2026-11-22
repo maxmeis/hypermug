@@ -1,0 +1,44 @@
+# Linux checks for every pull request, every main push and manual runs. The git hooks (.husky/) can
+# be skipped with --no-verify; this workflow cannot: it re-runs the same checks plus the commit
+# message lint. Native macOS checks run in ci-macos when the change range needs them.
+when:
+  - event: push
+    branch: ${CI_REPO_DEFAULT_BRANCH}
+  - event: [pull_request, manual]
+
+labels:
+  platform: linux/amd64
+
+steps:
+  - name: scope
+    image: node:24.19.0-bookworm@sha256:4196d66a565c6f195728d9952f161f4adfe2ad753052a08b7ec7f1c5a6bda42b
+    commands:
+      - ./helpers/woodpecker-ci.sh scope
+
+  - name: tools
+    image: node:24.19.0-bookworm@sha256:4196d66a565c6f195728d9952f161f4adfe2ad753052a08b7ec7f1c5a6bda42b
+    commands:
+      - make ci-tools
+
+  - name: layer-rules
+    image: node:24.19.0-bookworm@sha256:4196d66a565c6f195728d9952f161f4adfe2ad753052a08b7ec7f1c5a6bda42b
+    commands:
+      - make check-layers
+
+  - name: release-metadata-and-workflow-checks
+    image: node:24.19.0-bookworm@sha256:4196d66a565c6f195728d9952f161f4adfe2ad753052a08b7ec7f1c5a6bda42b
+    commands:
+      - make test-ci
+      - make test-release
+      - make check-shell
+
+  - name: issue-automation-and-content-checks
+    image: node:24.19.0-bookworm@sha256:4196d66a565c6f195728d9952f161f4adfe2ad753052a08b7ec7f1c5a6bda42b
+    commands:
+      - make check-automation
+      - make check-website
+
+  - name: commit-messages
+    image: node:24.19.0-bookworm@sha256:4196d66a565c6f195728d9952f161f4adfe2ad753052a08b7ec7f1c5a6bda42b
+    commands:
+      - ./helpers/woodpecker-ci.sh lint-commits

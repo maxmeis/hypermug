@@ -10,19 +10,27 @@ cd "$(dirname "$0")/.."
 umask 077
 work="$(mktemp -d)"
 keychain="$work/release.keychain-db"
-original_keychains=()
-while IFS= read -r line; do original_keychains+=("$line"); done < <(security list-keychains -d user | sed -E 's/^[[:space:]]*"//; s/"[[:space:]]*$//')
+created=false
 cleanup() {
-  security list-keychains -d user -s "${original_keychains[@]}" >/dev/null 2>&1 || true
-  security delete-keychain "$keychain" >/dev/null 2>&1 || true
-  rm -rf "$work"
+  local status="$?"
+  trap - EXIT INT TERM
+  if [[ "$created" == true ]]; then
+    if ! security delete-keychain "$keychain" >/dev/null; then
+      echo 'Could not delete the temporary release keychain' >&2
+      status=1
+    fi
+  fi
+  rm -rf "$work" || status=1
+  exit "$status"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 password="$(openssl rand -hex 32)"
 security create-keychain -p "$password" "$keychain"
+created=true
 security unlock-keychain -p "$password" "$keychain"
 security set-keychain-settings -lut 21600 "$keychain"
-security list-keychains -d user -s "$keychain" "${original_keychains[@]}"
 printf '%s' "$DEVELOPER_ID_P12_BASE64" | base64 -D > "$work/certificate.p12"
 security import "$work/certificate.p12" -k "$keychain" -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
 security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"

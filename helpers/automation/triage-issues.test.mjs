@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, missingComment, productionVersions, reportedVersion, triage } from './triage-issues.mjs';
+import { classify, missingComment, productionVersions, reportedVersion, triage, poll } from './triage-issues.mjs';
 
 const body = `### HyperMug marketing version\n1.2.3\n\n### HyperMug build number\n456\n\n### Install source\nGitHub production release`;
 const releases = [
@@ -88,4 +88,50 @@ test('owner issue creates one comment, updates it, and removes it when repaired'
   await triage(args);
   assert.equal(comments.length, 0);
   assert.equal(calls.filter(([method, path]) => method === 'DELETE' && path.includes('/comments/')).length, 1);
+});
+
+test('poll paginates, ignores pull requests and other authors, and reuses release lookup', async () => {
+  const calls = [];
+  const owner = { user: { login: 'maxmeis' }, labels: [{ name: 'bug' }, { name: 'version:older' }], body };
+  const ignored = { ...owner, user: { login: 'someone-else' } };
+  const request = async (method, path) => {
+    calls.push([method, path]);
+    if (path === '/user') return { login: 'triage-account' };
+    if (path.includes('state=all')) return path.endsWith('page=1')
+      ? [{ ...owner, number: 4 }, ...Array(99).fill(ignored)]
+      : [{ ...owner, number: 5, pull_request: {} }, { ...owner, number: 6 }];
+    if (path.endsWith('/issues/4')) return { ...owner, number: 4 };
+    if (path.endsWith('/issues/6')) return { ...owner, number: 6 };
+    if (path.includes('/releases?')) return releases;
+    if (path.includes('/comments?')) return [];
+    assert.fail(`Unexpected request: ${method} ${path}`);
+  };
+
+  await poll({ repo: 'maxmeis/hypermug', releasesRepo: 'maxmeis/hypermug', request });
+  assert.equal(calls.filter(([, path]) => path.includes('state=all')).length, 2);
+  assert.equal(calls.filter(([, path]) => path.includes('/releases?')).length, 1);
+  assert.equal(calls.filter(([, path]) => path.includes('/comments?')).length, 2);
+});
+
+test('poll replaces an outdated Actions comment once and reuses the new token author comment', async () => {
+  const issue = { number: 7, user: { login: 'maxmeis' }, labels: [{ name: 'bug' }, { name: 'needs-version' }], body: '' };
+  let comments = [{ id: 1, user: { login: 'github-actions[bot]' }, body: missingComment('### HyperMug marketing version\n1.2.3') }];
+  const writes = [];
+  const request = async (method, path, data) => {
+    if (path === '/user') return { login: 'triage-account' };
+    if (path.includes('state=all')) return [issue];
+    if (path.endsWith('/issues/7')) return issue;
+    if (path.includes('/releases?')) return releases;
+    if (path.includes('/comments?')) return comments;
+    writes.push(method);
+    if (method === 'DELETE' && path.endsWith('/comments/1')) comments = [];
+    else if (method === 'POST' && path.endsWith('/issues/7/comments')) {
+      comments.push({ id: 2, user: { login: 'triage-account' }, body: data.body });
+    } else assert.fail(`Unexpected request: ${method} ${path}`);
+  };
+  const args = { repo: 'maxmeis/hypermug', releasesRepo: 'maxmeis/hypermug', request };
+  await poll(args);
+  await poll(args);
+  assert.deepEqual(writes, ['DELETE', 'POST']);
+  assert.equal(comments[0].body, missingComment(issue.body));
 });

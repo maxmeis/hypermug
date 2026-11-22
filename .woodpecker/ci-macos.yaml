@@ -1,0 +1,15 @@
+# Always report a macOS status for PRs, even when the change needs no native checks.
+when:
+  - event: push
+    branch: ${CI_REPO_DEFAULT_BRANCH}
+  - event: pull_request
+  - event: manual
+
+labels:
+  platform: darwin/arm64
+
+steps:
+  - name: native-checks
+    image: bash
+    commands:
+      - ./helpers/woodpecker-ci.sh native-checks

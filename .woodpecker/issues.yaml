@@ -1,0 +1,20 @@
+when:
+  - event: cron
+    cron: issue-triage
+    branch: main
+    evaluate: 'CI_REPO == "maxmeis/hypermug"'
+  - event: manual
+    branch: main
+    evaluate: 'CI_REPO == "maxmeis/hypermug"'
+
+labels:
+  platform: linux/amd64
+
+steps:
+  - name: triage-owner-bug-reports
+    image: node:24.19.0-bookworm@sha256:4196d66a565c6f195728d9952f161f4adfe2ad753052a08b7ec7f1c5a6bda42b
+    environment:
+      GITHUB_TOKEN:
+        from_secret: issue_triage_token
+    commands:
+      - node helpers/automation/triage-issues.mjs --poll
