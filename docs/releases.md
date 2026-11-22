@@ -28,11 +28,15 @@ Homebrew lives in this repository; no external tap, release service or GitHub Ap
 
 Production is active on protected `main`: the release workflows run only for pushes to `main` of `maxmeis/hypermug`, and their Woodpecker secrets are limited to the `push` event, so source pushes release automatically. Woodpecker secret event filters apply across branches. Before provisioning credentials, enforce trusted configuration or restrict who can initiate secret-bearing push and manual pipelines at the server. Branch conditions in repository YAML are editable by a branch author. Source pull requests retain required CODEOWNERS review. The repository-scoped SSH deploy key is stored as the Woodpecker secret `homebrew_ssh_private_key`; its ruleset exception permits the generated cask commit to bypass pull-request and required-check rules. Force-push and deletion protections are separate and have no deploy-key bypass. The `github_token` secret has Contents write for tags and releases.
 
-Dependabot continues opening updates for the actions used by `issues.yml`. Review, approve, and merge those PRs once their Woodpecker checks pass. Woodpecker reads the pipeline from the PR commit, so a PR-event approval credential would be accessible to PR-controlled code. Keep PR pipelines free of repository secrets. The issue workflow stays on GitHub Actions to receive GitHub issue events.
+The repository has no GitHub Actions workflows or Actions dependencies for Dependabot to update. Keep pull request pipelines free of repository secrets because Woodpecker reads the pipeline from the PR commit. Review dependency updates with the ordinary PR checks. Update pinned Woodpecker images in reviewed PRs.
 
 For a new repository using these workflows, limit the release secrets to the `push` event. Install a repository-scoped write deploy key and save its private key as the `homebrew_ssh_private_key` secret. Add a narrow PR and required-check ruleset bypass for that key, while keeping source CODEOWNERS review and force-push/deletion protections in rulesets without the bypass. Inspect all applicable branch protections and rulesets together: `contents: write` and CODEOWNERS alone do not grant direct-push permission. Alternatively, omit the deploy key only when the repository's rules explicitly allow the `github_token` secret to update the cask directly.
 
 The website workflow `.woodpecker/website.yaml` checks `Source/Website` and commits it to the `gh-pages` branch with the `github_token` secret. GitHub Pages must serve "Deploy from a branch", `gh-pages`, `/ (root)`.
+
+## Issue triage
+
+Configure an `issue-triage` Woodpecker cron job on `main` (for example, `@hourly`) after merge. It polls open and closed owner bug reports and reconciles their version labels and managed comments. A new report or edit is processed on the next run, or immediately through a manual run of the `issues` workflow on `main`. Avoid overlapping manual and scheduled runs. The token’s GitHub account authors new comments and needs permission to remove obsolete comments left by GitHub Actions.
 
 ## Production credentials
 
@@ -40,6 +44,7 @@ Keep Apple credentials in Woodpecker repository secrets limited to the `push` ev
 
 | Type | Name | Purpose |
 | --- | --- | --- |
+| Secret | `issue_triage_token` | Fine-grained token for this repository with Issues write and Contents read. Restrict to `cron` and `manual`. |
 | Secret | `github_token` | Fine-grained token, this repository, Contents write: tags, releases, cask and appcast commits, `gh-pages` (also `manual`) |
 | Secret | `developer_id_p12_base64` | Base64-encoded Developer ID certificate and private key |
 | Secret | `developer_id_p12_password` | Export password for the certificate |

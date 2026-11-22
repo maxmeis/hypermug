@@ -56,7 +56,7 @@ class WoodpeckerFilterTests(unittest.TestCase):
                      "docs/configuration.md", "docs/new guide.md", "docs/audits/a.md",
                      "Source/Website/style.css", "Source/Website/img/logo.png",
                      "Source/Skills/my-mac-wrench/SKILL.md", "Makefile", "package-lock.json",
-                     ".woodpecker/ci.yaml", ".github/workflows/issues.yml", "helpers/ci_scope.py",
+                     ".woodpecker/ci.yaml", ".woodpecker/issues.yaml", "helpers/ci_scope.py",
                      "Source/HyperMug/Info.plist", "Source/Branding/HyperMug.icns", "unknown.md",
                      "Casks/other.rb", "docs/examples/aerospace.toml", "docs/examples/a/b.toml",
                      "docs/README.md.orig", "Source/WebsiteOld/index.html"]:
