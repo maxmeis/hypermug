@@ -1,0 +1,28 @@
+# Check and publish Source/Website to the gh-pages branch that GitHub Pages serves.
+when:
+  - event: push
+    branch: main
+    path:
+      include:
+        - Source/Website/**
+        - .woodpecker/website.yaml
+        - helpers/woodpecker-website.sh
+  - event: manual
+    branch: main
+
+labels:
+  platform: linux/amd64
+
+steps:
+  - name: check-website
+    image: node:24.19.0-bookworm@sha256:4196d66a565c6f195728d9952f161f4adfe2ad753052a08b7ec7f1c5a6bda42b
+    commands:
+      - make check-website
+
+  - name: deploy
+    image: node:24.19.0-bookworm@sha256:4196d66a565c6f195728d9952f161f4adfe2ad753052a08b7ec7f1c5a6bda42b
+    environment:
+      GH_TOKEN:
+        from_secret: github_token
+    commands:
+      - ./helpers/woodpecker-website.sh

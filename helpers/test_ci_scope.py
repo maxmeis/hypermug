@@ -1,5 +1,6 @@
 """CI selection tests use real Git histories, including renames and divergent PRs."""
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -7,6 +8,26 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ci_scope import content_only, native_required
+
+WORKFLOW = Path(__file__).resolve().parents[1] / ".woodpecker/ci-macos.yaml"
+
+
+def woodpecker_excludes():
+    """The ci-macos path exclude list, read without a YAML dependency."""
+    lines = WORKFLOW.read_text().splitlines()
+    start = next(i for i, line in enumerate(lines) if line.strip() == "exclude:") + 1
+    patterns = []
+    for line in lines[start:]:
+        if not line.strip().startswith("- "):
+            break
+        patterns.append(line.strip()[2:])
+    return patterns
+
+
+def glob(pattern):
+    """Woodpecker's doublestar matching: `**` spans directories, `*` stays within one."""
+    parts = re.split(r"(\*\*|\*)", pattern)
+    return re.compile("".join(".*" if p == "**" else "[^/]*" if p == "*" else re.escape(p) for p in parts))
 
 
 class ScopeTests(unittest.TestCase):
@@ -25,6 +46,26 @@ class ScopeTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertFalse(content_only(["README.md", path]))
         self.assertFalse(content_only([]))
+
+
+class WoodpeckerFilterTests(unittest.TestCase):
+    def test_macos_workflow_skips_exactly_when_ci_scope_allows_linux(self):
+        patterns = [glob(pattern) for pattern in woodpecker_excludes()]
+        self.assertTrue(patterns)
+        for path in ["README.md", "CONTRIBUTING.md", "Casks/README.md", "Casks/hypermug.rb",
+                     "docs/configuration.md", "docs/new guide.md", "docs/audits/a.md",
+                     "Source/Website/style.css", "Source/Website/img/logo.png",
+                     "Source/Skills/my-mac-wrench/SKILL.md", "Makefile", "package-lock.json",
+                     ".woodpecker/ci.yaml", ".github/workflows/issues.yml", "helpers/ci_scope.py",
+                     "Source/HyperMug/Info.plist", "Source/Branding/HyperMug.icns", "unknown.md",
+                     "Casks/other.rb", "docs/examples/aerospace.toml", "docs/examples/a/b.toml",
+                     "docs/README.md.orig", "Source/WebsiteOld/index.html"]:
+            with self.subTest(path=path):
+                self.assertEqual(any(p.fullmatch(path) for p in patterns), content_only([path]))
+        # The filter cannot carve docs/examples/ out of docs/**, so other docs/ subdirectories
+        # conservatively keep native checks.
+        self.assertTrue(content_only(["docs/guides/new.md"]))
+        self.assertFalse(any(p.fullmatch("docs/guides/new.md") for p in patterns))
 
 
 class GitScopeTests(unittest.TestCase):

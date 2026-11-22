@@ -1,0 +1,25 @@
+# Production release, part 1: test the exact pushed main commit on the macOS agent with every check.
+# The paths below must match release.yaml, which runs only after this workflow succeeds.
+when:
+  - event: push
+    branch: main
+    evaluate: 'CI_REPO == "maxmeis/hypermug"'
+    path:
+      include:
+        - Source/HyperMug/**
+        - Source/Branding/**
+        - helpers/**
+        - Makefile
+        - .woodpecker/release-check.yaml
+        - .woodpecker/release.yaml
+
+labels:
+  platform: darwin/arm64
+
+steps:
+  - name: check
+    image: bash
+    commands:
+      - . helpers/woodpecker-macos-env.sh node@24
+      - make ci-tools
+      - make check
