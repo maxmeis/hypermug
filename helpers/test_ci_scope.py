@@ -1,6 +1,6 @@
 """CI selection tests use real Git histories, including renames and divergent PRs."""
 import os
-import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -10,24 +10,6 @@ from unittest.mock import patch
 from ci_scope import content_only, native_required
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".woodpecker/ci-macos.yaml"
-
-
-def woodpecker_excludes():
-    """The ci-macos path exclude list, read without a YAML dependency."""
-    lines = WORKFLOW.read_text().splitlines()
-    start = next(i for i, line in enumerate(lines) if line.strip() == "exclude:") + 1
-    patterns = []
-    for line in lines[start:]:
-        if not line.strip().startswith("- "):
-            break
-        patterns.append(line.strip()[2:])
-    return patterns
-
-
-def glob(pattern):
-    """Woodpecker's doublestar matching: `**` spans directories, `*` stays within one."""
-    parts = re.split(r"(\*\*|\*)", pattern)
-    return re.compile("".join(".*" if p == "**" else "[^/]*" if p == "*" else re.escape(p) for p in parts))
 
 
 class ScopeTests(unittest.TestCase):
@@ -46,26 +28,6 @@ class ScopeTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertFalse(content_only(["README.md", path]))
         self.assertFalse(content_only([]))
-
-
-class WoodpeckerFilterTests(unittest.TestCase):
-    def test_macos_workflow_skips_exactly_when_ci_scope_allows_linux(self):
-        patterns = [glob(pattern) for pattern in woodpecker_excludes()]
-        self.assertTrue(patterns)
-        for path in ["README.md", "CONTRIBUTING.md", "Casks/README.md", "Casks/hypermug.rb",
-                     "docs/configuration.md", "docs/new guide.md", "docs/audits/a.md",
-                     "Source/Website/style.css", "Source/Website/img/logo.png",
-                     "Source/Skills/my-mac-wrench/SKILL.md", "Makefile", "package-lock.json",
-                     ".woodpecker/ci.yaml", ".woodpecker/issues.yaml", "helpers/ci_scope.py",
-                     "Source/HyperMug/Info.plist", "Source/Branding/HyperMug.icns", "unknown.md",
-                     "Casks/other.rb", "docs/examples/aerospace.toml", "docs/examples/a/b.toml",
-                     "docs/README.md.orig", "Source/WebsiteOld/index.html"]:
-            with self.subTest(path=path):
-                self.assertEqual(any(p.fullmatch(path) for p in patterns), content_only([path]))
-        # The filter cannot carve docs/examples/ out of docs/**, so other docs/ subdirectories
-        # conservatively keep native checks.
-        self.assertTrue(content_only(["docs/guides/new.md"]))
-        self.assertFalse(any(p.fullmatch("docs/guides/new.md") for p in patterns))
 
 
 class GitScopeTests(unittest.TestCase):
@@ -156,6 +118,43 @@ class GitScopeTests(unittest.TestCase):
         ]:
             with self.subTest(event=event, base=base, head=end):
                 self.assertTrue(native_required(event, base, end, cwd=self.root))
+
+    def test_woodpecker_reports_content_only_and_runs_native_for_source_pr(self):
+        workflow = WORKFLOW.read_text()
+        self.assertIn("  - event: pull_request\n", workflow)
+        self.assertNotIn("    path:", workflow)
+        self.assertIn("./helpers/woodpecker-ci.sh native-checks", workflow)
+
+        self.git("remote", "add", "origin", str(self.root))
+        self.git("checkout", "-b", "feature")
+        helpers = self.root / "helpers"
+        helpers.mkdir()
+        for name in ["woodpecker-ci.sh", "ci_scope.py"]:
+            shutil.copyfile(WORKFLOW.parents[1] / "helpers" / name, helpers / name)
+        self.write("helpers/woodpecker-macos-env.sh", "echo loaded-native-environment\n")
+        self.write("helpers/check-dev-bundle.sh", "#!/bin/bash\necho checked-bundle\n")
+        (helpers / "check-dev-bundle.sh").chmod(0o755)
+        self.write("Makefile", "test test-runtime compile-check dev:\n\t@echo ran-$@\n")
+        self.write("docs/guides/setup.md", "changed guide\n")
+        self.git("add", "docs")
+        self.git("commit", "-m", "docs: fixture")
+        env = dict(os.environ, CI_PIPELINE_EVENT="pull_request", CI_REPO_DEFAULT_BRANCH="main",
+                   CI_COMMIT_TARGET_BRANCH="main")
+
+        def run(head, **override):
+            return subprocess.run(["bash", "helpers/woodpecker-ci.sh", "native-checks"],
+                                  cwd=self.root, env={**env, "CI_COMMIT_SHA": head, **override},
+                                  capture_output=True, text=True, check=True).stdout
+
+        docs_head = self.git("rev-parse", "HEAD")
+        self.assertEqual(run(docs_head), "Content-only change. Native checks are skipped.\n")
+        self.assertIn("ran-test\n", run(docs_head, CI_COMMIT_TARGET_BRANCH="missing"))
+        self.write("Source/HyperMug/Sources/Core/Engine.swift", "changed source\n")
+        self.git("add", "Source")
+        self.git("commit", "-m", "fix: fixture")
+        output = run(self.git("rev-parse", "HEAD"))
+        for check in ["ran-test", "ran-test-runtime", "ran-compile-check", "ran-dev", "checked-bundle"]:
+            self.assertIn(check + "\n", output)
 
     def test_cli_emits_one_boolean_output(self):
         self.write("README.md", "updated guide\n")

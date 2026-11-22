@@ -1,49 +1,15 @@
-# Native checks on the macOS agent. They run unless every changed file is one of the content paths
-# below, the rule of helpers/ci_scope.py; test_ci_scope.py keeps both in sync. A path filter cannot
-# exempt docs/examples/ from docs/**, so new docs/ subdirectories also run native checks. Manual
-# runs have no change range and always run them.
+# Always report a macOS status for PRs, even when the change needs no native checks.
 when:
   - event: push
     branch: ${CI_REPO_DEFAULT_BRANCH}
-    path: &content
-      exclude:
-        - README.md
-        - CONTRIBUTING.md
-        - Casks/README.md
-        - Casks/hypermug.rb
-        - docs/*
-        - docs/audits/**
-        - Source/Website/**
-        - Source/Skills/**
   - event: pull_request
-    path: *content
   - event: manual
 
 labels:
   platform: darwin/arm64
 
 steps:
-  - name: core-tests-and-coverage-gate
+  - name: native-checks
     image: bash
     commands:
-      - . helpers/woodpecker-macos-env.sh
-      - make test
-
-  - name: native-subprocess-supervision-checks
-    image: bash
-    commands:
-      - . helpers/woodpecker-macos-env.sh
-      - make test-runtime
-
-  - name: compile-check
-    image: bash
-    commands:
-      - . helpers/woodpecker-macos-env.sh
-      - make compile-check
-
-  - name: dev-bundle
-    image: bash
-    commands:
-      - . helpers/woodpecker-macos-env.sh
-      - make dev
-      - ./helpers/check-dev-bundle.sh "build/HyperMug Dev.app"
+      - ./helpers/woodpecker-ci.sh native-checks

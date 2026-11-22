@@ -22,8 +22,38 @@ release_version() { cat "$state/version"; }
 
 case "${1:-}" in
   version)
-    : "${GH_TOKEN:?}"
     test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+    for name in GH_TOKEN APPLE_TEAM_ID SIGN_ID DEVELOPER_ID_P12_BASE64 DEVELOPER_ID_P12_PASSWORD \
+      APP_STORE_CONNECT_PRIVATE_KEY APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_ISSUER_ID \
+      HOMEBREW_SSH_PRIVATE_KEY SPARKLE_ED_PRIVATE_KEY; do
+      if [[ -z "${!name:-}" ]]; then
+        echo "Release preflight requires $name" >&2
+        exit 1
+      fi
+    done
+    PYTHONPATH=helpers python3 - <<'KEY_CHECK'
+import base64
+import binascii
+import os
+import plistlib
+
+from ed25519 import public_key
+
+try:
+    seed = base64.b64decode(os.environ["SPARKLE_ED_PRIVATE_KEY"], validate=True)
+except binascii.Error:
+    raise SystemExit("Release preflight requires a base64 Sparkle Ed25519 seed") from None
+if len(seed) != 32:
+    raise SystemExit("Release preflight requires a 32-byte Sparkle Ed25519 seed")
+with open("Source/HyperMug/Info.plist", "rb") as plist:
+    expected = plistlib.load(plist)["SUPublicEDKey"]
+if base64.b64encode(public_key(seed)).decode("ascii") != expected:
+    raise SystemExit("Release preflight: Sparkle key does not match the app's SUPublicEDKey")
+KEY_CHECK
+    if [[ "$(gh api "repos/$GITHUB_REPOSITORY" --jq '.permissions.push')" != true ]]; then
+      echo 'Release preflight requires a GitHub token with repository write access' >&2
+      exit 1
+    fi
     if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then git fetch -q --unshallow origin; fi
     git fetch -q origin --tags --force
     tags="$state/production-tags"

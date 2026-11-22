@@ -174,7 +174,7 @@ class SignedReleaseIntegrationTests(unittest.TestCase):
         self.project = Path(self.temp.name) / 'project'
         helpers = self.project / 'helpers'
         helpers.mkdir(parents=True)
-        for name in ('release.sh', 'release_metadata.py', 'ed25519.py', 'notary_auth.sh'):
+        for name in ('release.sh', 'woodpecker-release.sh', 'release_metadata.py', 'ed25519.py', 'notary_auth.sh'):
             shutil.copy2(ROOT / 'helpers' / name, helpers / name)
         (helpers / 'check-bundle-schema.py').write_text('pass\n')
         sparkle = helpers / 'verify_sparkle_bundle.sh'
@@ -191,13 +191,15 @@ class SignedReleaseIntegrationTests(unittest.TestCase):
         self.log = Path(self.temp.name) / 'calls'
         fixtures = {
             'security': '''
-if [[ "$1" == list-keychains && "${4:-}" != -s ]]; then echo '"/tmp/login.keychain-db"'; fi
+if [[ "$1" == list-keychains || "$1" == default-keychain ]]; then exit 1; fi
 if [[ "$1" == find-identity ]]; then echo '  1) FAKE "Developer ID Application: Example"'; fi
 ''',
             # The production wrapper uses macOS base64 -D; emulate decoding on Linux CI too.
             'base64': "python3 -c 'import base64, sys; sys.stdout.buffer.write(base64.b64decode(sys.stdin.buffer.read()))'",
             'openssl': 'echo fakepassword',
             'make': '''
+echo "SIGN_KEYCHAIN=$SIGN_KEYCHAIN" >> "$MOCK_LOG"
+[[ "$SIGN_KEYCHAIN" == /*/release.keychain-db ]]
 mkdir -p build/HyperMug.app/Contents
 printf plist > build/HyperMug.app/Contents/Info.plist
 ''',
@@ -241,11 +243,43 @@ fi
         self.assertLess(calls.index('verify_sparkle_bundle build/HyperMug.app TEAM123'), calls.index('xcrun notarytool submit'))
         self.assertLess(calls.index('xcrun notarytool submit'), calls.index('xcrun stapler staple'))
         self.assertLess(calls.index('xcrun stapler validate'), calls.rindex('ditto -c'))
-        self.assertIn('security delete-keychain', calls)
+        keychain = next(line.split('=', 1)[1] for line in calls.splitlines() if line.startswith('SIGN_KEYCHAIN='))
+        self.assertNotIn('security list-keychains', calls)
+        self.assertNotIn('security default-keychain', calls)
+        self.assertIn(f' -k {keychain} -P fixture', calls)
+        self.assertIn(f'security find-identity -v -p codesigning {keychain}', calls)
+        self.assertIn(f'security delete-keychain {keychain}', calls)
         archive = self.project / 'build/release/HyperMug-1.2.3.zip'
         self.assertTrue(archive.is_file())
         self.assertIn(hashlib.sha256(archive.read_bytes()).hexdigest(),
                       (self.project / 'build/release/hypermug.rb').read_text())
+
+    def test_woodpecker_preflight_before_tag_work(self):
+        subprocess.run(['git', 'remote', 'add', 'origin', str(self.project)], cwd=self.project, check=True)
+        subprocess.run(['git', 'tag', 'v0.3.1'], cwd=self.project, check=True)
+        info = self.project / 'Source/HyperMug/Info.plist'
+        info.parent.mkdir(parents=True)
+        info.write_bytes(plistlib.dumps({'SUPublicEDKey': base64.b64encode(ed25519.public_key(SEED)).decode()}))
+        gh = self.bin / 'gh'
+        gh.write_text('#!/bin/bash\nprintf "%s\\n" "$*" >> "$MOCK_LOG"\necho true\n')
+        gh.chmod(0o755)
+        env = dict(self.env, CI_PIPELINE_EVENT='push', CI_COMMIT_BRANCH='main', CI_COMMIT_SHA=self.sha,
+                   CI_REPO='maxmeis/hypermug', CI_PIPELINE_NUMBER='5', GH_TOKEN='fixture',
+                   HOMEBREW_SSH_PRIVATE_KEY='fixture', SPARKLE_ED_PRIVATE_KEY=base64.b64encode(SEED).decode())
+
+        def version(**override):
+            return subprocess.run(['bash', 'helpers/woodpecker-release.sh', 'version'], cwd=self.project,
+                                  env={**env, **override}, capture_output=True, text=True)
+
+        self.assertIn('requires GH_TOKEN', version(GH_TOKEN='').stderr)
+        mismatch = version(SPARKLE_ED_PRIVATE_KEY=base64.b64encode(b'x' * 32).decode())
+        self.assertNotEqual(mismatch.returncode, 0)
+        self.assertIn('does not match', mismatch.stderr)
+        self.assertFalse(self.log.exists())
+        result = version()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.log.read_text(), 'api repos/maxmeis/hypermug --jq .permissions.push\n')
+        self.assertEqual((self.project / 'build/woodpecker/version').read_text().strip(), '0.3.1')
 
     def test_rejected_notarization_never_publishes_archive_and_cleans_keychain(self):
         result = self.run_release('Invalid')

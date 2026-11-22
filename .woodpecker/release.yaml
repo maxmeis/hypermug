@@ -20,11 +20,29 @@ labels:
   platform: darwin/arm64
 
 steps:
-  - name: select-version-and-create-source-tag
+  - name: preflight-and-create-source-tag
     image: bash
     environment:
       GH_TOKEN:
         from_secret: github_token
+      APPLE_TEAM_ID:
+        from_secret: apple_team_id
+      SIGN_ID:
+        from_secret: sign_id
+      DEVELOPER_ID_P12_BASE64:
+        from_secret: developer_id_p12_base64
+      DEVELOPER_ID_P12_PASSWORD:
+        from_secret: developer_id_p12_password
+      APP_STORE_CONNECT_PRIVATE_KEY:
+        from_secret: app_store_connect_private_key
+      APP_STORE_CONNECT_KEY_ID:
+        from_secret: app_store_connect_key_id
+      APP_STORE_CONNECT_ISSUER_ID:
+        from_secret: app_store_connect_issuer_id
+      HOMEBREW_SSH_PRIVATE_KEY:
+        from_secret: homebrew_ssh_private_key
+      SPARKLE_ED_PRIVATE_KEY:
+        from_secret: sparkle_ed_private_key
     commands:
       - . helpers/woodpecker-macos-env.sh gh
       - ./helpers/woodpecker-release.sh version

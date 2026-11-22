@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Woodpecker CI helpers for the Linux `ci` workflow. Woodpecker passes the change range as CI_*
+# Woodpecker CI helpers for the Linux and macOS CI workflows. Woodpecker passes the change range as CI_*
 # variables instead of GitHub event fields, so this maps them onto the existing Make targets.
 #
 #   helpers/woodpecker-ci.sh scope         print the native-check decision for the change range
+#   helpers/woodpecker-ci.sh native-checks  run native checks unless the change is content-only
 #   helpers/woodpecker-ci.sh lint-commits  lint every commit this pull request or push adds
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -10,7 +11,7 @@ cd "$(dirname "$0")/.."
 
 # commitlint and the scope check need the complete history, not the clone's shallow tip.
 full_history() {
-  if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then git fetch -q --unshallow origin; fi
+  if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then git fetch -q --unshallow origin || return 1; fi
   git fetch -q origin "+refs/heads/${CI_REPO_DEFAULT_BRANCH}:refs/remotes/origin/${CI_REPO_DEFAULT_BRANCH}"
 }
 
@@ -18,19 +19,36 @@ full_history() {
 # previous pipeline on this branch. Empty when there is none.
 base() {
   if [[ "$CI_PIPELINE_EVENT" == pull_request ]]; then
-    : "${CI_COMMIT_TARGET_BRANCH:?}"
-    git fetch -q origin "+refs/heads/${CI_COMMIT_TARGET_BRANCH}:refs/remotes/origin/${CI_COMMIT_TARGET_BRANCH}"
+    [[ -n "${CI_COMMIT_TARGET_BRANCH:-}" ]] || return 1
+    git fetch -q origin "+refs/heads/${CI_COMMIT_TARGET_BRANCH}:refs/remotes/origin/${CI_COMMIT_TARGET_BRANCH}" || return 1
     git rev-parse "refs/remotes/origin/${CI_COMMIT_TARGET_BRANCH}"
   else
     printf '%s\n' "${CI_PREV_COMMIT_SHA:-}"
   fi
 }
 
+scope() {
+  local from
+  full_history || return 1
+  from="$(base)" || return 1
+  python3 helpers/ci_scope.py --event "$CI_PIPELINE_EVENT" --base "$from" --head "$CI_COMMIT_SHA"
+}
+
 case "${1:-}" in
   scope)
-    full_history
-    # Informational: the ci-macos workflow's path filter makes the same conservative choice.
-    python3 helpers/ci_scope.py --event "$CI_PIPELINE_EVENT" --base "$(base)" --head "$CI_COMMIT_SHA"
+    scope
+    ;;
+  native-checks)
+    if decision="$(scope)" && [[ "$decision" == native=false ]]; then
+      echo 'Content-only change. Native checks are skipped.'
+      exit 0
+    fi
+    . helpers/woodpecker-macos-env.sh
+    make test
+    make test-runtime
+    make compile-check
+    make dev
+    ./helpers/check-dev-bundle.sh "build/HyperMug Dev.app"
     ;;
   lint-commits)
     full_history
@@ -53,7 +71,7 @@ case "${1:-}" in
     fi
     ;;
   *)
-    echo "usage: $0 scope|lint-commits" >&2
+    echo "usage: $0 scope|native-checks|lint-commits" >&2
     exit 2
     ;;
 esac
