@@ -71,11 +71,19 @@ export async function semanticPlan(repo, selection) {
     }
     git(checkout, 'push', '-q', 'origin', 'main');
     git(checkout, 'push', '-q', 'origin', '--tags');
+    // semantic-release uses env-ci to infer its branch. This calculation runs
+    // inside a local main checkout even when the outer job is a pull request.
+    // Keep the explicit analysis environment free of GitHub's PR ref and job credentials.
+    const analysisEnv = Object.fromEntries(
+      ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM']
+        .filter((key) => process.env[key] !== undefined)
+        .map((key) => [key, process.env[key]]),
+    );
     const result = await semanticRelease({
       ...releaseConfig(selection.sourceSha, remote),
       ci: false,
       dryRun: true,
-    }, { cwd: checkout, stdout: process.stderr, stderr: process.stderr });
+    }, { cwd: checkout, env: analysisEnv, stdout: process.stderr, stderr: process.stderr });
     if (!result?.nextRelease) throw new Error(`semantic-release did not select a version for ${selection.sourceSha}`);
     const computed = version(result.nextRelease.version);
     if (selection.existingVersion && computed !== selection.existingVersion) {

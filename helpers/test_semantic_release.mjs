@@ -152,6 +152,32 @@ test('queue works from the detached HEAD used by Actions checkout', async (t) =>
   assert.equal((await semanticPlan(repo, nextSource(repo, 'HEAD'))).version, '0.3.4');
 });
 
+test('semantic dry run ignores the outer GitHub pull-request ref', (t) => {
+  const { repo, cleanup } = fixture();
+  t.after(cleanup);
+  commit(repo, 'fix: repair PR release selection');
+  const env = {
+    ...process.env,
+    CI: 'true',
+    GITHUB_ACTIONS: 'true',
+    GITHUB_EVENT_NAME: 'pull_request',
+    GITHUB_REF: 'refs/pull/57/merge',
+    GITHUB_HEAD_REF: 'fix/release-selection',
+    GITHUB_BASE_REF: 'main',
+    GITHUB_SHA: 'f'.repeat(40),
+    GH_TOKEN: 'dry-run-token-must-not-appear',
+  };
+  const result = spawnSync(process.execPath,
+    [new URL('./release_queue.mjs', import.meta.url).pathname, 'next', '--repo', repo,
+      '--main', 'main', '--notes-file', join(repo, 'notes.md')],
+    { encoding: 'utf8', env });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Next release: v0\.3\.4/);
+  assert.doesNotMatch(result.stderr, /refs\/pull\/57\/merge/);
+  assert.doesNotMatch(result.stderr, /dry-run-token-must-not-appear/);
+  assert.match(readFileSync(join(repo, 'notes.md'), 'utf8'), /repair PR release selection/);
+});
+
 test('queue can release refreshed main beyond the runner checkout', async (t) => {
   const { repo, cleanup } = fixture();
   t.after(cleanup);
